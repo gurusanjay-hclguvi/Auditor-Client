@@ -1,0 +1,172 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Alert, Box, Chip, Snackbar, Stack, Tab, Tabs } from '@mui/material'
+import { useSelector } from 'react-redux'
+import { useSearchParams } from 'react-router-dom'
+import PageHeader from '../components/common/PageHeader'
+import PageState from '../components/common/PageState'
+import SalesActionTable from '../components/salesTable/SalesActionTable'
+import { getLeads, sendLeadReminder } from '../apiCalls/salesAuditApi'
+import { useApi } from '../utils/useApi'
+import {
+  LEAD_STAGES,
+  getLeadStage,
+  hasCreditStatus,
+  isSapOverdue,
+  needsEscalation,
+} from '../utils/leadStatus'
+
+const TABS = {
+  [LEAD_STAGES.pending]: {
+    label: 'Sales Action Pending',
+    emptyMessage: 'No leads are pending verification.',
+  },
+  [LEAD_STAGES.awaiting]: {
+    label: 'Awaiting',
+    emptyMessage: 'No leads have been verified by an auditor yet.',
+  },
+}
+
+const TICK_MS = 60 * 1000
+
+function resolveTab(tab) {
+  return tab in TABS ? tab : LEAD_STAGES.pending
+}
+
+function getPendingSummary(leads, now) {
+  return [
+    {
+      label: 'Paid, not verified',
+      color: 'warning',
+      count: leads.filter((lead) => hasCreditStatus(lead, 'unverified')).length,
+    },
+    {
+      label: 'Mismatch',
+      color: 'error',
+      count: leads.filter((lead) => hasCreditStatus(lead, 'mismatch')).length,
+    },
+    {
+      label: 'Overdue >24h',
+      color: 'error',
+      count: leads.filter((lead) => needsEscalation(lead) && isSapOverdue(lead, now)).length,
+    },
+  ]
+}
+
+function Leads() {
+  const token = useSelector((state) => state.reducers.commonData.authToken)
+  const canSend = useSelector((state) =>
+    Boolean(state.reducers.commonData.permission.salesAudit?.write),
+  )
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = resolveTab(searchParams.get('tab'))
+
+  const { data, loading, error, reload } = useApi(getLeads)
+  const [now, setNow] = useState(() => Date.now())
+  const [sendingId, setSendingId] = useState(null)
+  const [dismissedSweep, setDismissedSweep] = useState(null)
+  const [sendError, setSendError] = useState(null)
+
+  // Keeps "Time in SAP" and "Auto-mail in …" current without refetching.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS)
+    return () => clearInterval(timer)
+  }, [])
+
+  const leadsByStage = useMemo(() => {
+    const grouped = { [LEAD_STAGES.pending]: [], [LEAD_STAGES.awaiting]: [] }
+    data?.leads.forEach((lead) => grouped[getLeadStage(lead)].push(lead))
+    return grouped
+  }, [data])
+
+  const visibleLeads = leadsByStage[tab]
+  const showSweepToast = data?.mailsSentThisSweep > 0 && dismissedSweep !== data
+
+  async function handleSend(leadId) {
+    setSendingId(leadId)
+    try {
+      await sendLeadReminder(token, leadId)
+      reload()
+    } catch (sendFailure) {
+      setSendError(sendFailure.message)
+    } finally {
+      setSendingId(null)
+    }
+  }
+
+  return (
+    <Box>
+      <PageHeader
+        title="Leads"
+        subtitle="Leads awaiting audit, and the ones an auditor has verified"
+      />
+
+      <Tabs
+        value={tab}
+        onChange={(_, next) => setSearchParams({ tab: next })}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        {Object.entries(TABS).map(([key, { label }]) => (
+          <Tab
+            key={key}
+            value={key}
+            label={data ? `${label} (${leadsByStage[key].length})` : label}
+          />
+        ))}
+      </Tabs>
+
+      <PageState
+        loading={loading}
+        error={error}
+        empty={visibleLeads.length === 0}
+        emptyMessage={TABS[tab].emptyMessage}
+        onRetry={reload}
+      >
+        {tab === LEAD_STAGES.pending && (
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1 }}>
+            {getPendingSummary(visibleLeads, now).map((item) => (
+              <Chip
+                key={item.label}
+                label={`${item.label}: ${item.count}`}
+                color={item.count ? item.color : 'default'}
+                variant="outlined"
+              />
+            ))}
+          </Stack>
+        )}
+        <SalesActionTable
+          leads={visibleLeads}
+          showEscalation={tab === LEAD_STAGES.pending}
+          now={now}
+          canSend={canSend}
+          sendingId={sendingId}
+          onSend={handleSend}
+        />
+      </PageState>
+
+      <Snackbar
+        open={showSweepToast}
+        autoHideDuration={6000}
+        onClose={() => setDismissedSweep(data)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity="info" variant="filled" onClose={() => setDismissedSweep(data)}>
+          Auto-escalation: {data?.mailsSentThisSweep} lead
+          {data?.mailsSentThisSweep === 1 ? '' : 's'} over 24h in SAP mailed to BDA &amp; Accounts
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={Boolean(sendError)}
+        autoHideDuration={6000}
+        onClose={() => setSendError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity="error" variant="filled" onClose={() => setSendError(null)}>
+          {sendError}
+        </Alert>
+      </Snackbar>
+    </Box>
+  )
+}
+
+export default Leads
