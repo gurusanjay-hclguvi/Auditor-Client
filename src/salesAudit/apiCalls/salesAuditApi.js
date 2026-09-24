@@ -7,6 +7,7 @@ import { MOCK_CC_RESPONSES, MOCK_RECHECKS } from './mocks/rechecks'
 import { HISTORICAL_ALERTS } from './mocks/history'
 import { MOCK_VENDOR_EMI } from './mocks/vendorEmi'
 import { MOCK_AUDITS } from './mocks/audits'
+import { MOCK_DISCOUNTS } from './mocks/discounts'
 import {
   getEscalation,
   getEscalationLog,
@@ -198,9 +199,10 @@ export function updateCcResponse(token, leadId, response) {
   return post(token, `${leadPath(leadId)}/cc-response`, { response })
 }
 
-// Rechecks, payments and every alert mail, for trends / patterns / response times.
-// TODO: wire to backend once its structure is known; mock data only for now.
-export function getAuditHistory() {
+// Rechecks, payments and every alert mail, for trends / patterns / response times. The backend
+// returns the last 60 days by default, enough to compare 30 days with the 30 before.
+export function getAuditHistory(token) {
+  if (!USE_MOCK_API) return get(token, '/audit-history')
   runRecheckReminderSweep(MOCK_RECHECKS, MOCK_STUDENTS, Date.now())
   const recheckAlerts = MOCK_RECHECKS.filter((recheck) => recheck.alert).map((recheck) => ({
     ...recheck.alert,
@@ -249,8 +251,8 @@ function getMockZohoRecord(lead, ccRecord) {
 }
 
 // Everything the Lead Audit Workspace compares for one lead.
-// TODO: wire to backend once its structure is known; mock data only for now.
 export function getLeadAudit(token, leadId) {
+  if (!USE_MOCK_API) return get(token, `${leadPath(leadId)}/audit`)
   const student = findMockLead(leadId)
   if (!student) return mockResponse(undefined)
   runRecheckReminderSweep(MOCK_RECHECKS, MOCK_STUDENTS, Date.now())
@@ -273,13 +275,14 @@ export function getLeadAudit(token, leadId) {
     partialSplitUpCategory: ccRecord?.partialSplitUpCategory ?? student.partialSplitUpCategory,
     pointsCovered: ccRecord?.pointsCovered ?? [],
     rechecks: MOCK_RECHECKS.filter((recheck) => recheck.leadId === leadId),
+    discount: MOCK_DISCOUNTS[leadId] ?? null,
   })
 }
 
 // Auditor verifies the lead, moving it to Awaiting; `overrideReason` is required when the
 // checklist didn't fully pass. Resolves to the audit record.
-// TODO: wire to backend once its structure is known; mock data only for now.
 export function markLeadAudited(token, leadId, { overrideReason = '' } = {}) {
+  if (!USE_MOCK_API) return post(token, `${leadPath(leadId)}/mark-audited`, { overrideReason })
   if (!findMockLead(leadId)) return mockResponse(undefined)
   MOCK_AUDITS[leadId] = { auditedAt: nowSeconds(), auditedBy: 'Audit Team', overrideReason }
   return mockResponse(MOCK_AUDITS[leadId])

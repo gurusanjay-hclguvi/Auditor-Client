@@ -14,7 +14,8 @@ import { paths } from './routePaths'
 // Lead Audit Workspace logic: compare Zoho, the CC mail and the EMI vendor field by field, tick
 // the audit checklist, and turn any failure into a pre-filled recheck.
 // audit: { lead, sources: { zoho, cc, vendor }, paymentMode, partialSplitUpCategory,
-//          pointsCovered }, where cc / vendor are null when that source doesn't exist.
+//          pointsCovered, discount }, where cc / vendor are null when that source doesn't exist
+//          and discount is the lead's latest discount request ({ status, discountValue, … }) or null.
 
 export const AUDIT_SOURCES = { zoho: 'Zoho', cc: 'CC mail', vendor: 'EMI vendor' }
 
@@ -164,6 +165,39 @@ function creditCheck(lead, key, label, { required, naReason }) {
   }
 }
 
+// A discount on the lead needs an approved request (DiscountData) for the same amount.
+function discountCheck(lead, discount) {
+  const given = Number(lead.discountGiven)
+  if (!(given > 0)) return notApplicable('No discount given')
+  const givenLabel = formatCurrency(lead.discountGiven)
+  if (!discount) {
+    return fail(`${givenLabel} discount given without a discount request`, {
+      recheck: {
+        category: 'approval',
+        notes: `A ${givenLabel} discount was given but no discount request was found.`,
+      },
+    })
+  }
+  if (discount.status !== 'Approved') {
+    return fail(`Discount request is ${discount.status || 'not approved'}`, {
+      recheck: {
+        category: 'approval',
+        notes: `A ${givenLabel} discount was given but the request is ${discount.status || 'not approved'}.`,
+      },
+    })
+  }
+  if (Number(discount.discountValue) !== given) {
+    const approvedLabel = formatCurrency(discount.discountValue)
+    return fail(`Approved ${approvedLabel}, given ${givenLabel}`, {
+      recheck: {
+        category: 'approval',
+        notes: `Discount given (${givenLabel}) differs from the approved discount (${approvedLabel}).`,
+      },
+    })
+  }
+  return pass(`${givenLabel} discount approved`)
+}
+
 // Rows where two named sources both have a value and disagree.
 const disagreeing = (rows, a, b) =>
   rows.filter(
@@ -295,6 +329,12 @@ export function buildChecklist(audit, { sourceList, sections }, openRechecks) {
     }
     items.push({ key: 'emiVendor', label: 'EMI terms match the vendor', ...emiCheck })
   }
+
+  items.push({
+    key: 'discount',
+    label: 'Discount approved',
+    ...discountCheck(lead, audit.discount),
+  })
 
   items.push({
     key: 'openRechecks',

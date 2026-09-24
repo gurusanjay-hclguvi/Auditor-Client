@@ -24,3 +24,5 @@ dist-ssr
 *.sw?   
 claude_enrolment_financial_data_cases.md
 RULES.md
+.env
+API_ENDPOINTS.md

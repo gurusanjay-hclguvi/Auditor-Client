@@ -7,9 +7,9 @@ recorded, raise **rechecks**, and follow up. It gives each **BDA** (Business Dev
 a to-do list and the alerts raised on their leads, and it keeps **BDMs** (managers) and
 **Accounts** in the loop through (currently simulated) alert mails.
 
-> Status: frontend only, running on **mock data**. The Go backend is being built separately and
-> its structure is not final, so every mail and every historical number is simulated in the
-> browser. See [Mock data and simulated mail](#6-mock-data-and-simulated-mail).
+> Status: runs against the Go backend (`audit-checker-backend`, feature folder `salesAudit/`) or,
+> by default, on in-browser **mock data**. See [Mock data](#6-mock-data-and-simulated-mail) and
+> [API contract](#7-api-contract).
 
 ---
 
@@ -21,7 +21,7 @@ a to-do list and the alerts raised on their leads, and it keeps **BDMs** (manage
 4. [Business rules](#4-business-rules)
 5. [Alerts and mails](#5-alerts-and-mails)
 6. [Mock data and simulated mail](#6-mock-data-and-simulated-mail)
-7. [Planned API contract](#7-planned-api-contract)
+7. [API contract](#7-api-contract)
 8. [Project structure](#8-project-structure)
 9. [Tech stack and conventions](#9-tech-stack-and-conventions)
 10. [Getting started](#10-getting-started)
@@ -102,8 +102,9 @@ the whole audit of one lead on one screen.
 - **Audit checklist** (sticky on the right), each item ticked automatically with its reason:
   down payment verified · initial payment verified (n/a for EMI-only and subscription plans) ·
   remaining balance verified (n/a until paid) · CC mail uploaded (shows the BDA's CC answer) · CC
-  mail matches Zoho · all required points in the CC · EMI terms match the vendor (EMI only) · no
-  open rechecks. Failing items offer **Raise recheck** (pre-filled) or a link.
+  mail matches Zoho · all required points in the CC · EMI terms match the vendor (EMI only) ·
+  discount approved (n/a without a discount) · no open rechecks. Failing items offer **Raise
+  recheck** (pre-filled) or a link.
 - **Mark verified → Awaiting** (write): one click when every check passes; otherwise *Verify with
   override…* asks for a reason, which is shown on the lead afterwards.
 
@@ -198,7 +199,10 @@ no record → **Not paid**.
 - **Mismatch → recheck category:** EMI fields → *EMI*; down payment → *Down Payment*; other payment
   fields → *Payment*; personal/course fields → *Missed points in CC*; no CC → *CC Pending*;
   missing CC points → *Missed points in CC*; unverified/mismatched credit → *Down Payment* or
-  *Payment*. Notes list what each source says.
+  *Payment*; discount given without an approved request of the same amount → *Approval*. Notes
+  list what each source says.
+- **Discount approved:** when the lead has `discountGiven`, its latest discount request
+  (DiscountData) must be *Approved* for the same amount.
 - The verify button needs every item to pass or be n/a; otherwise an override reason.
 
 ### 24h SAP escalation — `utils/leadStatus.js`, `apiCalls/mocks/mailSimulator.js`
@@ -252,14 +256,14 @@ Sorted by priority, then oldest first.
 | Recheck overdue | Automatic, every 24h while a recheck stays open | BDA + BDM | Rechecks *Alert* column, BDA alerts |
 | CC mail not sent | BDA answers "mail not sent" | BDA | CC Status / CC Updates, BDA alerts |
 
-Every mail is **simulated**: it is recorded (recipients, subject, auto/manual, time) and shown in
-the UI, but nothing is sent. Real sending and scheduling belong to the backend's Redis worker
-(RULES.MD §6).
+With the backend, every mail is logged (recipients, subject, auto/manual, time) and sent by its
+Redis worker over SMTP; the two sweeps run hourly. In mock mode mails are only recorded in the
+browser and the sweeps run when the data loads.
 
 ## 6. Mock data and simulated mail
 
-`VITE_USE_MOCK_API` defaults to mock mode; set it to `false` to call the real API for the
-endpoints listed in [section 7](#7-planned-api-contract). All mock state lives in memory and
+`VITE_USE_MOCK_API` defaults to mock mode; set it to `false` to call the backend for every
+endpoint in [section 7](#7-api-contract). All mock state lives in memory and
 **resets on page reload**. All data is fake (no real PII). Timestamps are relative to "now", so
 the demo always shows overdue and not-yet-due cases.
 
@@ -270,36 +274,39 @@ the demo always shows overdue and not-yet-due cases.
 | `apiCalls/mocks/ccVerification.js` | System vs CC data for leads with a CC, and the required points each CC covered | One injected mismatch per lead (amount, phone, EMI, medium); Sana's CC misses the refund policy |
 | `apiCalls/mocks/vendorEmi.js` | EMI vendor records for Meera, Rohan, Sana | Sana's vendor monthly EMI differs from Zoho; Rohan's CC differs from Zoho and vendor |
 | `apiCalls/mocks/audits.js` | Auditor verify decisions | Aarav verified; Tara verified with an override reason |
+| `apiCalls/mocks/discounts.js` | Latest discount request per lead | Aarav approved; Meera still pending |
 | `apiCalls/mocks/rechecks.js` | 5 current rechecks + CC responses; merges history | Open and resolved; one "mail not sent" CC response |
 | `apiCalls/mocks/history.js` | 15 resolved rechecks over ~8 weeks, past escalation mails | Sales Owner Two: repeat Payment rechecks; Diya: several rechecks; Sales Owner Three: slow resolution |
 | `apiCalls/mocks/mailSimulator.js` | The SAP sweep, recheck reminders, manual reminders, mail log | Once-per-24h rule |
 
-`getAuditHistory()`, `getLeadAudit()` and `markLeadAudited()` in `apiCalls/salesAuditApi.js`
-are **mock-only** (no endpoint) and carry a `TODO` to wire them once the backend structure is
-known. `getLeadAudit()` builds the Zoho side from the CC record's system data when there is one,
-else from the lead fields. `ccUploadedAt`, `addedAt`/`verifiedAt` on
-payments and the alert log exist only in the mocks for now.
+In mock mode, `getLeadAudit()` builds the Zoho side from the CC record's system data when there is
+one, else from the lead fields.
 
-## 7. Planned API contract
+## 7. API contract
 
-Sketched in comments in `apiCalls/mocks/students.js` and `apiCalls/mocks/rechecks.js`. All calls
-go through `apiCalls/salesAuditApi.js`, prefixed with `/sales-audit`, send
-`Authorization: <token>` (from Redux), and expect `{status: "success", data}` /
-`{status: "error", message}`.
+Implemented by the Go backend (`audit-checker-backend/salesAudit`); full shapes in
+[`API_ENDPOINTS.md`](API_ENDPOINTS.md). All calls go through `apiCalls/salesAuditApi.js`, prefixed
+with `/sales-audit`, send `Authorization: <token>` (from Redux), and expect
+`{status: "success", data}` / `{status: "error", message}`.
 
-| Method | Path | Used by |
-|---|---|---|
-| GET | `/leads` | Leads, BDA View, Overview — leads with `credits`, `escalation`, `ccResponse`, `sapEnteredAt` |
-| POST | `/leads/:id/send-reminder` | Send-now escalation |
-| GET | `/leads/summaries` | Rechecks (lead picker, CC Status) |
-| POST | `/leads/:id/cc-response` | CC modal — `{ response: "mailSentAwaitingAck" \| "mailNotSent" }` |
-| GET | `/rechecks` | Rechecks, BDA View |
-| POST | `/rechecks` | Raise recheck — `{ leadId, category, notes }` |
-| POST | `/rechecks/:id/resolve` | Mark resolved |
-| GET | `/students/:id`, `/students/:id/payments`, `/students/:id/cc-verification` | Student pages, CC Verification |
+| Method | Path | Permission | Used by |
+|---|---|---|---|
+| GET | `/leads` | view | Leads, BDA View, Overview — leads with `credits`, `escalation`, `ccResponse`, `audit`, `sapEnteredAt`, `ccUploadedAt` |
+| GET | `/leads/summaries` | view | Rechecks (lead picker, CC Status) |
+| POST | `/leads/:id/send-reminder` | edit | Send-now escalation |
+| POST | `/leads/:id/cc-response` | edit | CC modal — `{ response: "mailSentAwaitingAck" \| "mailNotSent" }` |
+| GET | `/leads/:id/audit` | view | Lead Audit Workspace — sources, rechecks, `discount` |
+| POST | `/leads/:id/mark-audited` | edit | Mark verified → Awaiting — `{ overrideReason }` |
+| GET | `/rechecks` | view | Rechecks, BDA View |
+| POST | `/rechecks` | edit | Raise recheck — `{ leadId, category, notes }` |
+| POST | `/rechecks/:id/resolve` | edit | Mark resolved |
+| GET | `/audit-history` | view | Audit Overview, BDA patterns — rechecks, payments, alert mails (60 days) |
+| GET | `/students/:id`, `/students/:id/payments`, `/students/:id/cc-verification` | view | Student pages, CC Verification |
 
-**On hold** until the backend structure is known: audit history, vendor/EMI data, and any audit
-(verify → Awaiting) endpoint. These are mock-only in the frontend.
+Where the data comes from: leads are `LeadData` records in the Zoho `Audit` stage (SAP clock =
+`Added_Time`), credits from `paymentData`, the EMI vendor side from `EmiData`, installment plans
+from `PartialReminders` / `SubscriptionReminders`, the discount check from `DiscountData`. See the
+backend README for the mapping and its known gaps.
 
 ## 8. Project structure
 
@@ -374,8 +381,13 @@ Environment variables (optional, in `.env.local`):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VITE_BASE_URL` | `''` | Backend base URL for real API calls |
+| `VITE_BASE_URL` | `''` | Backend base URL for real API calls (`/api` with the dev proxy) |
 | `VITE_USE_MOCK_API` | mock on | Set to `false` to call the real API |
+| `DEV_API_TARGET` | `http://127.0.0.1:8080` | Where the Vite dev server proxies `/api/*` (dev only) |
+
+To run against the backend: start it (`go run main.go` in `audit-checker-backend`), then
+`cp .env.example .env.local` and `npm run dev`. The proxy strips `/api`, so the backend needs no
+CORS changes.
 
 To try the edit actions (send now, raise/resolve recheck, update CC, mark verified) locally, set
 `salesAudit.write: true` in `src/store/commonDataSlice.js` (dev store only).
@@ -386,6 +398,7 @@ Only in the dev shell, which Zen replaces:
 
 - `src/App.jsx` — nav buttons are keyed by `item.route` instead of `item.key`, because every nav
   item shares the permission key `salesAudit`.
+- `vite.config.js` — dev proxy `/api` → backend (`DEV_API_TARGET`).
 - `src/store/commonDataSlice.js` — dev token and permissions (`salesAudit: { read: true,
   write: false }`); unchanged, flip `write` to test edit actions.
 
@@ -398,14 +411,15 @@ the EMI vendor is compared, any mismatch becomes a pre-filled recheck in one cli
 rechecks are chased every 24h.
 
 ### Remaining gaps
-1. **CC data is mock-extracted.** The real CC is a mail; reading its fields and the points it
-   covers isn't built (it would run in the backend / AI service — RULES.MD allows AI only via the
-   Go backend).
-2. **Vendor data is mock.** No real EMI vendor feed yet.
+1. **The CC mail is not parsed.** With the backend, the CC column is empty (the "CC matches Zoho" and
+   "required points" checks show n/a) and CC Verification returns "not extracted yet" until the
+   backend / AI service fills `salesAuditCcExtracts` (RULES.MD allows AI only via the Go backend).
+   Mock mode still shows extracted CC data.
+2. **No real EMI vendor feed.** The vendor column is the `EmiData` loan application.
 3. **No auditor vs BDA roles** — one `salesAudit` permission; the BDA View uses a "Viewing as"
    picker until Zen provides the logged-in user. Audits are recorded as "Audit Team".
-4. **All mails are simulated**, and `ccUploadedAt`, payment timestamps, audits and the alert log
-   are mock-only and reset on reload.
+4. **Mock mode only:** mails, `ccUploadedAt`, payment timestamps, audits and the alert log reset on
+   reload. With the backend they are stored and mails are sent when SMTP is configured.
 5. **Personal/course mismatches map to "Missed points in CC"** — the closest of the six
    categories; a dedicated "Wrong details in CC" category may be worth adding.
 6. **No "undo verify"** — once a lead is in Awaiting it can't be sent back to SAP from the UI.
@@ -414,7 +428,6 @@ rechecks are chased every 24h.
 
 ### Later (backend-dependent)
 - Parse the real CC mail in the backend / AI service.
-- Real mail sending and schedules via the Redis worker.
 - Auditor / BDA / BDM roles from Zen permissions.
 - Vendor (EMI) and payment-gateway (Razorpay / EaseBuzz / PineLabs) integrations to verify
   payments automatically.
