@@ -1,14 +1,11 @@
-// The CC source (Zoho's `confirmationCall`) can be a call recording or a document, and where it
-// lives decides how it is shown:
-// - Audio (.mp3, .wav, .m4a, .ogg, .aac): played in an audio player.
+// The CC source is a PDF, linked by the lead's `confirmationCallLink`; where it lives decides how
+// it is framed:
 // - Google Drive: share links (".../view", "open?id=") refuse to be framed, so the frame loads
 //   Drive's embeddable preview (".../preview") instead.
 // - S3 (or any other direct file link): framed as it is; the browser's PDF viewer renders it.
-// Returns { kind: 'audio' | 'drive' | 'direct', frameUrl, openUrl }, or null for a missing or
-// non-web link.
+// Returns { kind: 'drive' | 'direct', frameUrl, openUrl }, or null for a missing or non-web link.
 
 const DRIVE_HOSTS = ['drive.google.com', 'docs.google.com']
-const AUDIO_FILE = /\.(mp3|wav|m4a|ogg|aac)$/i
 
 function parseWebUrl(link) {
   if (!link) return null
@@ -34,7 +31,6 @@ function drivePreviewUrl(url) {
 export function getPdfSource(link) {
   const url = parseWebUrl(link?.trim())
   if (!url) return null
-  if (AUDIO_FILE.test(url.pathname)) return { kind: 'audio', frameUrl: url.href, openUrl: url.href }
   if (DRIVE_HOSTS.includes(url.hostname)) {
     return { kind: 'drive', frameUrl: drivePreviewUrl(url), openUrl: url.href }
   }

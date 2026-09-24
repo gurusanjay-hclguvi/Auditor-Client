@@ -1,12 +1,12 @@
 import { createSlice } from '@reduxjs/toolkit'
 
 // Dev-shell stand-in for Zen's commonData slice (the starter kit's stub): Zen provides the real
-// token and permissions. The dev token names a mock user ("dev-mock-token:<email>", see
+// token and permissions. The dev token names a user ("dev-mock-token:<role>:<email>", see
 // src/salesAudit/apiCalls/mocks/users.js); the app bar's Mock user picker swaps it.
 const commonDataSlice = createSlice({
   name: 'commonData',
   initialState: {
-    authToken: 'dev-mock-token:auditor1@example.com',
+    authToken: 'dev-mock-token:auditor:auditor1@example.com',
     permission: {
       salesAudit: { read: true, write: true },
     },

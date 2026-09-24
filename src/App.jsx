@@ -24,7 +24,8 @@ import {
   getRoleHome,
   loadCurrentUser,
 } from './salesAudit/utils/roles'
-import { MOCK_USERS, mockTokenFor } from './salesAudit/apiCalls/mocks/users'
+import { mockTokenFor } from './salesAudit/apiCalls/mocks/users'
+import { getDevUsers } from './salesAudit/apiCalls/salesAuditApi'
 
 // Dev shell standing in for the Zen portal (starter kit): no login. The token and permissions
 // come from the stub store; the feature gates routes by permission and, inside each page, by the
@@ -34,30 +35,35 @@ function canAccess(permissions, permission) {
   return Boolean(permissions[key]?.[action === 'edit' ? 'write' : 'read'])
 }
 
-// Dev only: act as any mock user by swapping the token (Zen does this by who logs in).
+// Dev only: act as any dev user by swapping the token (Zen does this by who logs in). Against the
+// backend the list is the BDAs / BDMs on its leads plus a mock auditor.
 function MockUserPicker({ user }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const { data: users } = useApi(getDevUsers)
+  const options = users ?? (user ? [user] : [])
   return (
     <TextField
       select
       size="small"
       label="Mock user (dev)"
-      value={user?.email ?? ''}
+      value={user && options.some((option) => option.email === user.email) ? `${user.role}:${user.email}` : ''}
       onChange={(event) => {
-        const next = MOCK_USERS.find((candidate) => candidate.email === event.target.value)
-        dispatch(setAuthToken(mockTokenFor(next.email)))
+        const next = options.find((option) => `${option.role}:${option.email}` === event.target.value)
+        dispatch(setAuthToken(mockTokenFor(next)))
         navigate(getRoleHome(next.role))
       }}
       sx={{ minWidth: 280 }}
     >
       {Object.values(ROLES).flatMap((role) => [
         <ListSubheader key={`header-${role}`}>{ROLE_LABELS[role]}</ListSubheader>,
-        ...MOCK_USERS.filter((candidate) => candidate.role === role).map((candidate) => (
-          <MenuItem key={candidate.email} value={candidate.email}>
-            {candidate.name} · {candidate.email}
-          </MenuItem>
-        )),
+        ...options
+          .filter((option) => option.role === role)
+          .map((option) => (
+            <MenuItem key={`${role}:${option.email}`} value={`${role}:${option.email}`}>
+              {option.name === option.email ? option.email : `${option.name} · ${option.email}`}
+            </MenuItem>
+          )),
       ])}
     </TextField>
   )

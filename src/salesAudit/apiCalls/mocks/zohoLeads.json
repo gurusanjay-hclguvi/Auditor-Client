@@ -26,7 +26,7 @@
     "willLeadPayinSameMonth": "No",
     "zbCustomerId": "790000000000000001",
     "zbInvoiceId": "791000000000000002",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -269,7 +269,7 @@
     "willLeadPayinSameMonth": "No",
     "zbCustomerId": "790000000000000032",
     "zbInvoiceId": "791000000000000033",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -353,7 +353,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000043",
     "zbInvoiceId": "791000000000000044",
-    "confirmationCall": "http://recording (1).mp3",
+    "confirmationCall": "http://cc copy (1).pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -429,7 +429,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000053",
     "zbInvoiceId": "791000000000000054",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -713,7 +713,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000081",
     "zbInvoiceId": "791000000000000082",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -759,7 +759,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000086",
     "zbInvoiceId": "791000000000000087",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -835,7 +835,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000096",
     "zbInvoiceId": "791000000000000097",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -915,7 +915,7 @@
     "willLeadPayinSameMonth": "Yes",
     "zbCustomerId": "790000000000000103",
     "zbInvoiceId": "791000000000000104",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -1220,7 +1220,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000136",
     "zbInvoiceId": "791000000000000137",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -1312,7 +1312,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000148",
     "zbInvoiceId": "791000000000000149",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [],
     "partialReminders": [],
@@ -1442,7 +1442,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000159",
     "zbInvoiceId": "791000000000000160",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [],
     "partialReminders": [],
@@ -1493,7 +1493,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000163",
     "zbInvoiceId": "791000000000000164",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -1648,7 +1648,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000180",
     "zbInvoiceId": "791000000000000181",
-    "confirmationCall": "http://recording (1).mp3",
+    "confirmationCall": "http://cc copy (1).pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -1743,7 +1743,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000192",
     "zbInvoiceId": "791000000000000193",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -2211,7 +2211,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000247",
     "zbInvoiceId": "791000000000000248",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -2304,7 +2304,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000259",
     "zbInvoiceId": "791000000000000260",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -2591,7 +2591,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000286",
     "zbInvoiceId": "791000000000000287",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -2786,7 +2786,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000309",
     "zbInvoiceId": "791000000000000310",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [],
     "partialReminders": [],
@@ -2837,7 +2837,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000313",
     "zbInvoiceId": "791000000000000314",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -2913,7 +2913,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000323",
     "zbInvoiceId": "791000000000000324",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {
@@ -3109,7 +3109,7 @@
     "willLeadPayinSameMonth": "",
     "zbCustomerId": "790000000000000338",
     "zbInvoiceId": "791000000000000339",
-    "confirmationCall": "/mock-cc-call.wav",
+    "confirmationCall": "/mock-cc.pdf",
     "admissionDetails": {},
     "financialDetails": [
       {

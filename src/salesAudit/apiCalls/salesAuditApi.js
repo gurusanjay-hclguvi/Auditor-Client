@@ -6,7 +6,7 @@ import { MOCK_CC_RESPONSES, MOCK_RECHECKS } from './mocks/rechecks'
 import { HISTORICAL_ALERTS } from './mocks/history'
 import { MOCK_VENDOR_EMI } from './mocks/vendorEmi'
 import { MOCK_AUDITS } from './mocks/audits'
-import { findMockUserByToken } from './mocks/users'
+import { MOCK_USERS, devUsersFromLeads, findMockUserByToken, userFromDevToken } from './mocks/users'
 import {
   getEscalation,
   getEscalationLog,
@@ -19,7 +19,12 @@ import {
 import { getContactEmail } from '../utils/contacts'
 import { getCategoryLabel } from '../utils/recheckStatus'
 import { getPaymentMode } from '../utils/auditChecks'
-import { fromZohoLead, toPayments } from '../utils/zohoLead'
+import {
+  discountFromRequest,
+  normalizeLead,
+  normalizePayment,
+  toLeadRecord,
+} from '../utils/zohoLead'
 
 // Serve fixtures until the Go backend exists; set VITE_USE_MOCK_API=false to hit the real API.
 const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -63,17 +68,31 @@ const nowSeconds = () => Math.floor(Date.now() / 1000)
 const studentPath = (studentId) => `/students/${encodeURIComponent(studentId)}`
 const leadPath = (leadId) => `/leads/${encodeURIComponent(leadId)}`
 
-// Leads come from Zoho as one nested document each; fromZohoLead maps them for the pages (the
-// mock leads are already mapped). `credits` are computed from the lead's financialDetails.
+// Every lead the API returns goes through normalizeLead (utils/zohoLead.js): the backend sends a
+// flat lead, the mock Zoho documents (already mapped). Pages only see the normalized shape.
 const withMockAudit = (student) => ({ ...student, audit: MOCK_AUDITS[student.id] ?? null })
 
 // Who is signed in: { hash, name, email, role: "auditor" | "bdm" | "bda" }. The backend resolves
 // it from the token (`auth` in the mock auth middleware); the mock reads the email in the dev
 // token ("dev-mock-token:<email>").
 export function getCurrentUser(token) {
-  if (!USE_MOCK_API) return get(token, '/me')
+  if (!USE_MOCK_API) {
+    // The backend has no /sales-audit/me yet: until it does, a dev token names its user.
+    return get(token, '/me').catch((error) => {
+      const user = userFromDevToken(token)
+      if (user) return user
+      throw error
+    })
+  }
   const user = findMockUserByToken(token)
   return user ? mockResponse(user) : mockError('Unknown user for this token')
+}
+
+// Dev accounts for the dev shell's Mock user picker: the mock users, or (against the backend)
+// the BDAs and BDMs on its leads plus the mock auditors.
+export function getDevUsers(token) {
+  if (USE_MOCK_API) return mockResponse(MOCK_USERS)
+  return getLeadSummaries(token).then((leads) => devUsersFromLeads(leads))
 }
 
 // Returns { leads, mailsSentThisSweep }. The mock runs the escalation sweep on every fetch,
@@ -93,7 +112,7 @@ export function getLeads(token) {
   }
   return get(token, '/leads').then((response) => ({
     ...response,
-    leads: response.leads.map(fromZohoLead),
+    leads: response.leads.map(normalizeLead),
   }))
 }
 
@@ -121,7 +140,7 @@ const toLeadSummary = (student) => ({
 // Every lead with its CC state, for the recheck lead picker and the CC Status tab.
 export function getLeadSummaries(token) {
   if (USE_MOCK_API) return mockResponse(MOCK_STUDENTS.map(toLeadSummary))
-  return get(token, '/leads/summaries').then((leads) => leads.map(fromZohoLead))
+  return get(token, '/leads/summaries').then((leads) => leads.map(normalizeLead))
 }
 
 // Rechecks raised in the app plus the ones Zoho sends inside each lead (recheckDetails), newest
@@ -143,7 +162,7 @@ export function getRechecks(token) {
     return mockResponse(mergeRechecks(MOCK_RECHECKS, MOCK_STUDENTS))
   }
   return Promise.all([get(token, '/rechecks'), get(token, '/leads')]).then(([rechecks, response]) =>
-    mergeRechecks(rechecks, response.leads.map(fromZohoLead)),
+    mergeRechecks(rechecks, response.leads.map(normalizeLead)),
   )
 }
 
@@ -175,7 +194,17 @@ export function raiseRecheck(token, { leadId, categories, notes }) {
     MOCK_RECHECKS.unshift(recheck)
     return mockResponse(recheck)
   }
-  return post(token, '/rechecks', { leadId, categories, notes })
+  // The backend stores one category per recheck: send the first, and name the others in the
+  // notes so nothing is lost. `categories` is sent too for when it accepts several.
+  const [category, ...others] = categories
+  const otherLabels = others.map(getCategoryLabel).join(', ')
+  return post(token, '/rechecks', {
+    leadId,
+    category,
+    categories,
+    notes: others.length ? `${notes}
+(Also: ${otherLabels})` : notes,
+  })
 }
 
 export function resolveRecheck(token, recheckId) {
@@ -215,7 +244,12 @@ export function updateCcResponse(token, leadId, response) {
 // Rechecks, payments and every alert mail, for trends / patterns / response times. The backend
 // returns the last 60 days by default, enough to compare 30 days with the 30 before.
 export function getAuditHistory(token) {
-  if (!USE_MOCK_API) return get(token, '/audit-history')
+  if (!USE_MOCK_API) {
+    return get(token, '/audit-history').then((history) => ({
+      ...history,
+      payments: history.payments.map(normalizePayment),
+    }))
+  }
   runRecheckReminderSweep(MOCK_RECHECKS, MOCK_STUDENTS, Date.now())
   const recheckAlerts = MOCK_RECHECKS.filter((recheck) => recheck.alert).map((recheck) => ({
     ...recheck.alert,
@@ -271,7 +305,11 @@ function getMockZohoRecord(lead, ccRecord) {
 export function getLeadAudit(token, leadId) {
   if (!USE_MOCK_API) {
     return get(token, `${leadPath(leadId)}/audit`).then((audit) => {
-      const lead = fromZohoLead(audit.lead)
+      const normalized = normalizeLead(audit.lead)
+      // The backend sends the discount request next to the lead.
+      const lead = audit.discount
+        ? { ...normalized, discount: discountFromRequest(audit.discount, normalized.discountGiven) }
+        : normalized
       return { ...audit, lead, rechecks: mergeRechecks(audit.rechecks ?? [], [lead]) }
     })
   }
@@ -319,19 +357,38 @@ export function markLeadAudited(token, leadId, { overrideReason = '' } = {}) {
 // The lead with its payment plan (`schedule`: partial or subscription reminders).
 export function getStudent(token, studentId) {
   if (USE_MOCK_API) return mockResponse(findMockLead(studentId))
-  return get(token, studentPath(studentId)).then(fromZohoLead)
+  return get(token, studentPath(studentId)).then(normalizeLead)
 }
 
-// The lead's financialDetails as payment rows, oldest first. They come with the lead document.
+// The lead's payment records as rows, oldest first.
 export function getStudentPayments(token, studentId) {
   if (USE_MOCK_API) {
     return mockResponse(MOCK_PAYMENTS.filter((payment) => payment.leadId === studentId))
   }
-  return get(token, studentPath(studentId)).then(toPayments)
+  return get(token, `${studentPath(studentId)}/payments`).then((payments) =>
+    payments.map(normalizePayment),
+  )
 }
 
+// Check source: the lead's record next to its CC source (confirmation-call link). The backend's
+// cc-verification answers only once a CC has been extracted, so its record is used when there is
+// one and the lead's own record otherwise.
 export function getCcVerification(token, studentId) {
-  if (!USE_MOCK_API) return get(token, `${studentPath(studentId)}/cc-verification`)
+  if (!USE_MOCK_API) {
+    return Promise.all([
+      get(token, `${studentPath(studentId)}/cc-verification`).catch(() => null),
+      getStudent(token, studentId),
+    ]).then(([verification, lead]) => {
+      const pdfUrl = verification?.pdfUrl || lead.confirmationCallLink
+      if (!pdfUrl) throw new Error('No CC source has been uploaded for this lead yet')
+      return {
+        paymentMode: verification?.paymentMode ?? getPaymentMode(lead.paymentType),
+        partialSplitUpCategory: verification?.partialSplitUpCategory ?? lead.partialSplitUpCategory,
+        system: verification?.system ?? toLeadRecord(lead),
+        pdfUrl,
+      }
+    })
+  }
   // Like the backend: the PDF link is the lead's CC link; no link means no PDF (404).
   const record = MOCK_CC_VERIFICATION[studentId]
   const pdfUrl = findMockLead(studentId)?.confirmationCallLink

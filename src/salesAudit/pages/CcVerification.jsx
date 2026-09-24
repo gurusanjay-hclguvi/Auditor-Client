@@ -37,7 +37,7 @@ function buildSections({ paymentMode, partialSplitUpCategory, system }) {
   ]
 }
 
-// Check source: the database record on the left, the CC source (PDF or call recording) on the
+// Check source PDF: the database record on the left, the CC PDF (confirmationCallLink) on the
 // right.
 function CcVerification() {
   const { studentId } = useParams()

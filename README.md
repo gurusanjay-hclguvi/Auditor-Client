@@ -172,11 +172,11 @@ when a CC link exists, and *Open audit* (auditor). Below it, **Payment details**
 Partial Payments · Remaining Balance · Subscription · Discount (`utils/paymentCategories.js`).
 
 ### Check source — `/sales-audit/students/:studentId/cc-verification`
-`pages/CcVerification.jsx`, opened from *Check source PDF* (or *Check source recording* when the
-CC link is audio; `components/ccVerification/CheckSourceButton.jsx`) on the Lead Audit Workspace
-and the Student detail page. A **call recording** (.mp3, .wav, .m4a, .ogg, .aac — Zoho's
-`confirmationCall` is often an .mp3) plays in an audio player next to the record; documents are
-framed as below. Left: the **database record** (Zoho) grouped into Personal / Course / Payment
+`pages/CcVerification.jsx`, opened from *Check source PDF*
+(`components/ccVerification/CheckSourceButton.jsx`) on the Lead Audit Workspace and the Student
+detail page when the lead has a `confirmationCallLink` (the backend's field; Zoho's
+`confirmationCall`). For now every CC is treated as a **PDF**; call recordings aren't
+supported. Left: the **database record** (Zoho) grouped into Personal / Course / Payment
 details (`components/ccVerification/RecordPanel.jsx`); payment fields adapt to the payment mode
 (installment count from the split category, e.g. `40-30-30` → 3; EMI loan terms; or both). Right:
 the **CC PDF** from cloud storage in an embedded frame, with *Open in new tab*
@@ -350,7 +350,7 @@ the demo always shows overdue and not-yet-due cases.
 
 | File | Holds | Deliberate cases |
 |---|---|---|
-| `apiCalls/mocks/zohoLeads.json`, `apiCalls/mocks/students.js` | 57 leads from a real Zoho export, anonymized by `scripts/anonymizeZohoSample.mjs` (fake names, contacts, ids, payment references and links; admission details dropped). `students.js` shifts every date by the same number of days so the latest payment is yesterday, adds `ccUploadedAt`, and maps the leads through `utils/zohoLead.js` into `MOCK_STUDENTS` / `MOCK_PAYMENTS` | Every real case: EMI 6 / 12 / 18 / 24 Month (Disbursed and Rejected applications, with vendors and dropped reasons such as "Low Cibil"), Direct - Full / Partial Payment, Intra Month Partial with discounts, Active / Inactive / Paid reminders, Mismatch payments; statuses converted / not converted / dropped; CC links as recordings, Drive files, a PDF and bad links |
+| `apiCalls/mocks/zohoLeads.json`, `apiCalls/mocks/students.js` | 57 leads from a real Zoho export, anonymized by `scripts/anonymizeZohoSample.mjs` (fake names, contacts, ids, payment references and links; admission details dropped). `students.js` shifts every date by the same number of days so the latest payment is yesterday, adds `ccUploadedAt`, and maps the leads through `utils/zohoLead.js` into `MOCK_STUDENTS` / `MOCK_PAYMENTS` | Every real case: EMI 6 / 12 / 18 / 24 Month (Disbursed and Rejected applications, with vendors and dropped reasons such as "Low Cibil"), Direct - Full / Partial Payment, Intra Month Partial with discounts, Active / Inactive / Paid reminders, Mismatch payments; statuses converted / not converted / dropped; CC links as the sample PDF (standing in for S3 files and, for now, recordings), Drive files and bad links |
 | `apiCalls/mocks/ccVerification.js` | Generated for every lead with a CC: system side from the lead, scraped side a copy | A mismatch on every fourth CC (phone, medium, fee or EMI); every fifth misses the refund policy |
 | `apiCalls/mocks/vendorEmi.js` | Generated vendor copy of each EMI lead's application | Every third one quotes a different monthly EMI |
 | `apiCalls/mocks/audits.js` | Auditor verify decisions | stu-1001 verified; stu-1010 verified with an override reason |
@@ -495,6 +495,32 @@ The **Lead Audit Workspace** now covers what was missing: the auditor explicitly
 once it reaches Awaiting, one checklist shows everything that is checked,
 the EMI vendor is compared, any mismatch becomes a pre-filled recheck in one click, and open
 rechecks are chased every 24h.
+
+### Running against the deployed backend
+`.env` / `.env.example` point the dev proxy at **https://audit-checker-backend.onrender.com**
+(`VITE_USE_MOCK_API=false`, `VITE_BASE_URL=/api`, `DEV_API_TARGET=<render URL>`); `npm run dev`
+then serves the real data through the Vite proxy (`changeOrigin` is set for the hosted backend).
+Set `VITE_USE_MOCK_API=true` to go back to the mock data. What the frontend does with the
+backend's current responses (`apiCalls/salesAuditApi.js`, `utils/zohoLead.js`):
+- **Leads** come back flat (`id`, `studentFullName`, `credits`, …) rather than as the Zoho
+  document; `normalizeLead` accepts both. "Every payment verified" (Awaiting) is judged from the
+  three credits, the only payment data on the lead.
+- **Payments** (`/students/:id/payments`) are mapped with `normalizePayment`; the discount on the
+  audit page comes from the audit's `discount` request (Approved / Requested); the lead lists show
+  only whether a discount was given.
+- **`/sales-audit/me` doesn't exist yet:** the frontend falls back to the dev token, which names
+  the user (`dev-mock-token:<role>:<email>`). The Mock user picker lists the BDAs / BDMs on the
+  backend's leads plus `auditor1@example.com`.
+- **Rechecks** hold one category in the backend: the first picked category is sent as `category`
+  and the rest are named in the notes ("Also: …"); `categories` is sent too.
+- **Check source** uses the backend's `cc-verification` when a CC has been extracted, otherwise
+  the lead's own record and its `confirmationCallLink`.
+- Not in the backend's lead yet, so empty against it: payment schedule (partial / subscription
+  reminders), EMI application details, `auditCoordinator` (My Leads stays empty; use All Leads),
+  Zoho `recheckDetails`, Zen ID / onboard coordinator.
+- **Production:** the backend sends no CORS headers (and RULES.md forbids widening CORS), so a
+  deployed frontend must reach it through a same-origin proxy (as the dev server does) or be
+  served from the same host.
 
 ### Remaining gaps
 - **Zoho cases:** the payment types are Direct - Full Payment, Direct - Partial Payment, Intra

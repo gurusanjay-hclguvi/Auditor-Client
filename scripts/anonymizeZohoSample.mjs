@@ -14,15 +14,14 @@ const FIRST = ['Aarav', 'Diya', 'Kabir', 'Meera', 'Rohan', 'Sana', 'Ishaan', 'Ni
   'Arjun', 'Charu', 'Vikram', 'Anika', 'Dev', 'Ira', 'Karan', 'Maya', 'Nikhil', 'Riya']
 const LAST = ['Test', 'Sample', 'Demo', 'Placeholder', 'Mock', 'Example', 'Fixture', 'Stub', 'Dummy']
 
-// Links that point at real recordings / documents become the app's own sample files.
+// Links that point at real CC files become the app's own sample PDF (CCs are treated as PDFs).
 const DRIVE_TEST_LINK =
   'https://drive.google.com/file/d/1eaQ9XX4g-_Gj-ARHIq0YVuFWwTKRS9M0/view?usp=sharing'
 function fakeSourceLink(link) {
   if (!link) return ''
   if (/drive\.google\.com|docs\.google\.com/.test(link)) return DRIVE_TEST_LINK
-  if (/\.(mp3|wav|m4a|ogg|aac)$/i.test(link) && /^https?:\/\/[^\s]+$/.test(link)) return '/mock-cc-call.wav'
   if (/^https?:\/\/[^\s]+$/.test(link)) return '/mock-cc.pdf'
-  return 'http://recording (1).mp3' // Zoho sometimes stores a bare file name; kept as a bad link
+  return 'http://cc copy (1).pdf' // Zoho sometimes stores a bare file name; kept as a bad link
 }
 
 // Stable fake ids for people who appear on many leads (BDAs, BDMs, application creators).

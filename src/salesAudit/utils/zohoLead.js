@@ -239,3 +239,132 @@ export function fromZohoLead(raw) {
     rechecks: toRechecks(raw),
   }
 }
+
+// --- The deployed Go backend (audit-checker-backend) ---------------------------------------
+// It imports the Zoho data into its own collections and returns a flat lead (id, studentFullName,
+// courseValue, credits, …) instead of the Zoho document. normalizeLead accepts either shape;
+// fields the backend doesn't send yet get safe defaults (no schedule, no Zoho rechecks, …).
+
+const formatUnixDate = (seconds) => {
+  if (!seconds) return ''
+  const date = new Date((seconds + 5.5 * 60 * 60) * 1000) // IST calendar day
+  return `${String(date.getUTCDate()).padStart(2, '0')}-${MONTHS[date.getUTCMonth()]}-${date.getUTCFullYear()}`
+}
+
+// The backend's payment row (Financial_Details) in the frontend's payment shape.
+export function normalizePayment(payment) {
+  if (payment.paymentId !== undefined) return payment
+  return {
+    id: text(payment.id),
+    leadId: text(payment.leadId),
+    type: text(payment.type),
+    amount: amount(payment.amount),
+    paymentDate: text(payment.paymentDate),
+    verified: text(payment.verified),
+    verifiedDate: formatUnixDate(payment.verifiedAt),
+    modeOfPayment: text(payment.modeOfPayment),
+    paymentId: '',
+    receiptCreated: '',
+    addedAt: payment.addedAt ?? null,
+    verifiedAt: payment.verifiedAt ?? null,
+  }
+}
+
+// The backend's discount request (DiscountData, on GET /leads/:id/audit) as the lead's discount.
+export function discountFromRequest(request, fallbackAmount) {
+  if (!request && !(Number(fallbackAmount) > 0)) return null
+  const approved = text(request?.status).toLowerCase() === 'approved'
+  return {
+    status: request ? (approved ? DISCOUNT_STATUS.approved : DISCOUNT_STATUS.requested) : null,
+    zohoStatus: text(request?.status),
+    amount: amount(request?.discountValue ?? fallbackAmount),
+    actualCourseFee: amount(request?.actualCourseFee),
+    requestedCourseFee: amount(request?.requestedCourseFee),
+    requestedBy: '',
+    creditNotes: [],
+    creditNotesVerified: false,
+  }
+}
+
+// With only the three credits to go on, a lead is fully verified when every credit it has is "Yes".
+function creditRecords(credits) {
+  return Object.entries(CREDIT_TYPES)
+    .map(([key, type]) => (credits?.[key] ? { type, ...credits[key] } : null))
+    .filter(Boolean)
+}
+
+function fromApiLead(raw) {
+  const records = creditRecords(raw.credits)
+  const emi = raw.emiDetails
+  return {
+    escalation: null,
+    ccResponse: null,
+    audit: null,
+    ccUploadedAt: null,
+    auditCoordinator: '',
+    onboardCoordinator: '',
+    zenId: '',
+    paysInSameMonth: '',
+    enrolledOn: formatUnixDate(raw.sapEnteredAt),
+    modeOfStudy: '',
+    preferredLanguage: '',
+    salesTeam: '',
+    leadSource: '',
+    status: '',
+    schedule: { kind: null, items: [] },
+    rechecks: [],
+    financialDetailsTypes: [],
+    ...raw,
+    id: text(raw.id),
+    saleOwner: text(raw.saleOwner),
+    saleOwnerManager: text(raw.saleOwnerManager),
+    discount: discountFromRequest(null, raw.discountGiven),
+    emiDetails: emi
+      ? { vendor: '', status: text(raw.emiStatus), ...emi, tenure: emi.tenure ?? '' }
+      : null,
+    allPaymentsVerified: records.length > 0 && records.every((record) => record.verified === 'Yes'),
+    unverifiedPayments: records
+      .filter((record) => record.verified !== 'Yes')
+      .map(({ type, amount: value, verified, paymentDate }) => ({ type, amount: value, verified, paymentDate })),
+  }
+}
+
+// Any lead the API returns: a Zoho document (superleapId) or the backend's flat lead.
+export function normalizeLead(raw) {
+  if (!raw) return raw
+  return raw.superleapId !== undefined ? fromZohoLead(raw) : fromApiLead(raw)
+}
+
+const rupeesOf = (value) => (value === '' || value == null ? '' : `₹${value}`)
+
+// The lead's Zoho record in the comparison shape (personal / courseDetails / payment), for the
+// Check source page and the audit's Zoho column.
+export function toLeadRecord(lead) {
+  const splits = (lead.partialSplitUpCategory ?? '').split('-').filter(Boolean)
+  const installments = (lead.schedule?.items ?? []).map((item, index) => ({
+    percentage: splits[index + 1] ? `${splits[index + 1]}%` : '',
+    dueDate: displayZohoDate(item.dueDate),
+    amount: rupeesOf(item.amount),
+  }))
+  const emi = lead.emiDetails
+  return {
+    personal: {
+      learnerName: lead.studentFullName,
+      email: lead.email,
+      contactNumber: lead.primaryPhone,
+    },
+    courseDetails: {
+      courseName: lead.course,
+      mode: lead.modeOfStudy,
+      medium: lead.preferredLanguage,
+    },
+    payment: {
+      totalFee: rupeesOf(lead.courseValue),
+      downPayment: rupeesOf(lead.credits?.bookingAmount?.amount),
+      ...(installments.length && { installments }),
+      ...(emi && /EMI/.test(lead.paymentType) && {
+        emi: { loanAmount: emi.loanAmount, monthlyEmi: emi.monthlyEmi, roi: emi.roi },
+      }),
+    },
+  }
+}

@@ -9,6 +9,14 @@ function DiscountStatusCell({ discount }) {
   if (!discount) {
     return <Chip label="No" size="small" variant="outlined" sx={{ color: MUTED_TEXT }} />
   }
+  // The backend's lead list only has the amount; the status comes with the lead's audit.
+  if (!discount.status) {
+    return (
+      <Tooltip title={`${formatCurrency(discount.amount)} discount · open the audit for its status`}>
+        <Chip label="Yes" size="small" color="primary" variant="outlined" />
+      </Tooltip>
+    )
+  }
   const approved = discount.status === DISCOUNT_STATUS.approved
   const fees =
     discount.actualCourseFee && discount.requestedCourseFee

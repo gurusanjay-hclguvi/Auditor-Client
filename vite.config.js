@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: env.DEV_API_TARGET || 'http://127.0.0.1:8080',
+          // Needed for a hosted backend (e.g. https://audit-checker-backend.onrender.com): sends
+          // its own Host header instead of localhost's.
+          changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
       },

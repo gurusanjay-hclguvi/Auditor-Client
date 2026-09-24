@@ -1,24 +1,19 @@
 import { Button } from '@mui/material'
-import {
-  HeadphonesOutlined as HeadphonesOutlinedIcon,
-  PictureAsPdfOutlined as PictureAsPdfOutlinedIcon,
-} from '@mui/icons-material'
+import { PictureAsPdfOutlined as PictureAsPdfOutlinedIcon } from '@mui/icons-material'
 import { Link as RouterLink } from 'react-router-dom'
-import { getPdfSource } from '../../utils/pdfSource'
 import { paths } from '../../utils/routePaths'
 
-// Opens the lead's CC source next to its database record; named after what the source is.
+// Opens the lead's CC PDF (confirmationCallLink) next to its database record.
 function CheckSourceButton({ leadId, link, size }) {
   if (!link) return null
-  const isRecording = getPdfSource(link)?.kind === 'audio'
   return (
     <Button
       component={RouterLink}
       to={paths.ccVerification(leadId)}
       size={size}
-      startIcon={isRecording ? <HeadphonesOutlinedIcon /> : <PictureAsPdfOutlinedIcon />}
+      startIcon={<PictureAsPdfOutlinedIcon />}
     >
-      {isRecording ? 'Check source recording' : 'Check source PDF'}
+      Check source PDF
     </Button>
   )
 }
