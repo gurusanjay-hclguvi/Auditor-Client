@@ -1,13 +1,11 @@
 import axios from 'axios'
 import { BaseUrl } from '../../config'
-import { MOCK_STUDENTS } from './mocks/students'
-import { MOCK_PAYMENTS } from './mocks/payments'
+import { MOCK_PAYMENTS, MOCK_STUDENTS } from './mocks/students'
 import { MOCK_CC_VERIFICATION } from './mocks/ccVerification'
 import { MOCK_CC_RESPONSES, MOCK_RECHECKS } from './mocks/rechecks'
 import { HISTORICAL_ALERTS } from './mocks/history'
 import { MOCK_VENDOR_EMI } from './mocks/vendorEmi'
 import { MOCK_AUDITS } from './mocks/audits'
-import { MOCK_DISCOUNTS } from './mocks/discounts'
 import {
   getEscalation,
   getEscalationLog,
@@ -18,9 +16,9 @@ import {
   sendMockMail,
 } from './mocks/mailSimulator'
 import { getContactEmail } from '../utils/contacts'
-import { CREDIT_TYPES } from '../utils/leadStatus'
-import { RECHECK_CATEGORIES } from '../utils/recheckStatus'
+import { getCategoryLabel } from '../utils/recheckStatus'
 import { getPaymentMode } from '../utils/auditChecks'
+import { fromZohoLead, toPayments } from '../utils/zohoLead'
 
 // Serve fixtures until the Go backend exists; set VITE_USE_MOCK_API=false to hit the real API.
 const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -55,38 +53,24 @@ function mockResponse(data) {
   })
 }
 
+function mockError(message) {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error(message)), MOCK_DELAY_MS))
+}
+
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 
 const studentPath = (studentId) => `/students/${encodeURIComponent(studentId)}`
 const leadPath = (leadId) => `/leads/${encodeURIComponent(leadId)}`
 
-// Latest record of each credit type, as the backend will return it on the lead.
-function getMockCredits(studentId) {
-  const payments = MOCK_PAYMENTS.filter((payment) => payment.studentId === studentId)
-  return Object.fromEntries(
-    Object.entries(CREDIT_TYPES).map(([key, type]) => {
-      const latest = payments.filter((payment) => payment.type === type).at(-1)
-      return [
-        key,
-        latest
-          ? { amount: latest.amount, verified: latest.verified, paymentDate: latest.paymentDate }
-          : null,
-      ]
-    }),
-  )
-}
-
-const withMockCredits = (student) => ({
-  ...student,
-  credits: getMockCredits(student.id),
-  audit: MOCK_AUDITS[student.id] ?? null,
-})
+// Leads come from Zoho as one nested document each; fromZohoLead maps them for the pages (the
+// mock leads are already mapped). `credits` are computed from the lead's financialDetails.
+const withMockAudit = (student) => ({ ...student, audit: MOCK_AUDITS[student.id] ?? null })
 
 // Returns { leads, mailsSentThisSweep }. The mock runs the escalation sweep on every fetch,
 // standing in for the backend's scheduled job.
 export function getLeads(token) {
   if (USE_MOCK_API) {
-    const leads = MOCK_STUDENTS.map(withMockCredits)
+    const leads = MOCK_STUDENTS.map(withMockAudit)
     const mailsSentThisSweep = runEscalationSweep(leads, Date.now())
     return mockResponse({
       leads: leads.map((lead) => ({
@@ -97,7 +81,10 @@ export function getLeads(token) {
       mailsSentThisSweep,
     })
   }
-  return get(token, '/leads')
+  return get(token, '/leads').then((response) => ({
+    ...response,
+    leads: response.leads.map(fromZohoLead),
+  }))
 }
 
 // Mails the lead's BDA and Accounts now; resolves to the new escalation record.
@@ -124,28 +111,44 @@ const toLeadSummary = (student) => ({
 // Every lead with its CC state, for the recheck lead picker and the CC Status tab.
 export function getLeadSummaries(token) {
   if (USE_MOCK_API) return mockResponse(MOCK_STUDENTS.map(toLeadSummary))
-  return get(token, '/leads/summaries')
+  return get(token, '/leads/summaries').then((leads) => leads.map(fromZohoLead))
+}
+
+// Rechecks raised in the app plus the ones Zoho sends inside each lead (recheckDetails), newest
+// first. Zoho's carry `source: "zoho"` and an SR ID.
+const zohoRechecks = (leads) => leads.flatMap((lead) => lead.rechecks ?? [])
+const newestFirst = (rechecks) => [...rechecks].sort((a, b) => (b.raisedAt ?? 0) - (a.raisedAt ?? 0))
+
+function mergeRechecks(appRechecks, leads) {
+  const known = new Set(appRechecks.map((recheck) => recheck.id))
+  return newestFirst([
+    ...appRechecks,
+    ...zohoRechecks(leads).filter((recheck) => !known.has(recheck.id)),
+  ])
 }
 
 export function getRechecks(token) {
   if (USE_MOCK_API) {
     runRecheckReminderSweep(MOCK_RECHECKS, MOCK_STUDENTS, Date.now())
-    return mockResponse(MOCK_RECHECKS)
+    return mockResponse(mergeRechecks(MOCK_RECHECKS, MOCK_STUDENTS))
   }
-  return get(token, '/rechecks')
+  return Promise.all([get(token, '/rechecks'), get(token, '/leads')]).then(([rechecks, response]) =>
+    mergeRechecks(rechecks, response.leads.map(fromZohoLead)),
+  )
 }
 
-// Raising a recheck alerts the lead's BDA and BDM; resolves to the new recheck.
-export function raiseRecheck(token, { leadId, category, notes }) {
+// Raising a recheck alerts the lead's BDA and BDM; resolves to the new recheck. A recheck covers
+// one or more categories.
+export function raiseRecheck(token, { leadId, categories, notes }) {
   if (USE_MOCK_API) {
     const lead = findMockLead(leadId)
     if (!lead) return mockResponse(undefined)
     const now = Date.now()
-    const categoryLabel = RECHECK_CATEGORIES[category].label
+    const categoryLabel = categories.map(getCategoryLabel).join(', ')
     const recheck = {
       id: `rc-${MOCK_RECHECKS.length + 1}`,
       leadId,
-      category,
+      categories,
       notes,
       status: 'open',
       raisedBy: 'Audit Team',
@@ -162,7 +165,7 @@ export function raiseRecheck(token, { leadId, category, notes }) {
     MOCK_RECHECKS.unshift(recheck)
     return mockResponse(recheck)
   }
-  return post(token, '/rechecks', { leadId, category, notes })
+  return post(token, '/rechecks', { leadId, categories, notes })
 }
 
 export function resolveRecheck(token, recheckId) {
@@ -213,8 +216,8 @@ export function getAuditHistory(token) {
     .filter(([, ccResponse]) => ccResponse.alert)
     .map(([leadId, ccResponse]) => ({ ...ccResponse.alert, leadId, kind: 'ccNotSent' }))
   return mockResponse({
-    rechecks: MOCK_RECHECKS,
-    payments: MOCK_PAYMENTS.map(({ studentId, ...payment }) => ({ ...payment, leadId: studentId })),
+    rechecks: mergeRechecks(MOCK_RECHECKS, MOCK_STUDENTS),
+    payments: MOCK_PAYMENTS,
     alerts: [
       ...HISTORICAL_ALERTS,
       ...getEscalationLog(),
@@ -240,8 +243,12 @@ function getMockZohoRecord(lead, ccRecord) {
       }
   const tenure = lead.paymentType?.match(/EMI - (\d+) Month/)?.[1]
   if (/EMI/.test(lead.paymentType ?? '')) {
+    const { loanAmount, monthlyEmi, roi, dueDate } = lead.emiDetails ?? {}
     zoho.payment.emi = {
-      ...lead.emiDetails,
+      loanAmount,
+      monthlyEmi,
+      roi,
+      dueDate,
       ...zoho.payment.emi,
       tenure: tenure ? `${tenure} months` : '',
       disbursalStatus: lead.emiStatus,
@@ -252,7 +259,12 @@ function getMockZohoRecord(lead, ccRecord) {
 
 // Everything the Lead Audit Workspace compares for one lead.
 export function getLeadAudit(token, leadId) {
-  if (!USE_MOCK_API) return get(token, `${leadPath(leadId)}/audit`)
+  if (!USE_MOCK_API) {
+    return get(token, `${leadPath(leadId)}/audit`).then((audit) => {
+      const lead = fromZohoLead(audit.lead)
+      return { ...audit, lead, rechecks: mergeRechecks(audit.rechecks ?? [], [lead]) }
+    })
+  }
   const student = findMockLead(leadId)
   if (!student) return mockResponse(undefined)
   runRecheckReminderSweep(MOCK_RECHECKS, MOCK_STUDENTS, Date.now())
@@ -261,7 +273,7 @@ export function getLeadAudit(token, leadId) {
   const { vendor: vendorName, ...vendorEmi } = vendor ?? {}
   return mockResponse({
     lead: {
-      ...withMockCredits(student),
+      ...withMockAudit(student),
       escalation: getEscalation(leadId),
       ccResponse: MOCK_CC_RESPONSES[leadId] ?? null,
     },
@@ -274,33 +286,46 @@ export function getLeadAudit(token, leadId) {
     paymentMode: ccRecord?.paymentMode ?? getPaymentMode(student.paymentType),
     partialSplitUpCategory: ccRecord?.partialSplitUpCategory ?? student.partialSplitUpCategory,
     pointsCovered: ccRecord?.pointsCovered ?? [],
-    rechecks: MOCK_RECHECKS.filter((recheck) => recheck.leadId === leadId),
-    discount: MOCK_DISCOUNTS[leadId] ?? null,
+    rechecks: mergeRechecks(
+      MOCK_RECHECKS.filter((recheck) => recheck.leadId === leadId),
+      [student],
+    ),
   })
 }
 
-// Auditor verifies the lead, moving it to Awaiting; `overrideReason` is required when the
-// checklist didn't fully pass. Resolves to the audit record.
+// Auditor audits a lead in Awaiting (every payment verified), moving it to Audited;
+// `overrideReason` is required when the checklist didn't fully pass. Resolves to the audit record.
 export function markLeadAudited(token, leadId, { overrideReason = '' } = {}) {
   if (!USE_MOCK_API) return post(token, `${leadPath(leadId)}/mark-audited`, { overrideReason })
-  if (!findMockLead(leadId)) return mockResponse(undefined)
+  const lead = findMockLead(leadId)
+  if (!lead) return mockResponse(undefined)
+  if (!lead.allPaymentsVerified || MOCK_AUDITS[leadId]) {
+    return mockError('Only leads in Awaiting Audit (every payment verified) can be audited')
+  }
   MOCK_AUDITS[leadId] = { auditedAt: nowSeconds(), auditedBy: 'Audit Team', overrideReason }
   return mockResponse(MOCK_AUDITS[leadId])
 }
 
+// The lead with its payment plan (`schedule`: partial or subscription reminders).
 export function getStudent(token, studentId) {
-  if (USE_MOCK_API) return mockResponse(MOCK_STUDENTS.find((student) => student.id === studentId))
-  return get(token, studentPath(studentId))
+  if (USE_MOCK_API) return mockResponse(findMockLead(studentId))
+  return get(token, studentPath(studentId)).then(fromZohoLead)
 }
 
+// The lead's financialDetails as payment rows, oldest first. They come with the lead document.
 export function getStudentPayments(token, studentId) {
   if (USE_MOCK_API) {
-    return mockResponse(MOCK_PAYMENTS.filter((payment) => payment.studentId === studentId))
+    return mockResponse(MOCK_PAYMENTS.filter((payment) => payment.leadId === studentId))
   }
-  return get(token, `${studentPath(studentId)}/payments`)
+  return get(token, studentPath(studentId)).then(toPayments)
 }
 
 export function getCcVerification(token, studentId) {
-  if (USE_MOCK_API) return mockResponse(MOCK_CC_VERIFICATION[studentId])
-  return get(token, `${studentPath(studentId)}/cc-verification`)
+  if (!USE_MOCK_API) return get(token, `${studentPath(studentId)}/cc-verification`)
+  // Like the backend: the PDF link is the lead's CC link; no link means no PDF (404).
+  const record = MOCK_CC_VERIFICATION[studentId]
+  const pdfUrl = findMockLead(studentId)?.confirmationCallLink
+  if (!record || !pdfUrl) return mockResponse(undefined)
+  const { paymentMode, partialSplitUpCategory, system } = record
+  return mockResponse({ paymentMode, partialSplitUpCategory, system, pdfUrl })
 }

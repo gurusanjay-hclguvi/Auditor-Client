@@ -7,6 +7,7 @@ import PageState from '../components/common/PageState'
 import SalesActionTable from '../components/salesTable/SalesActionTable'
 import { getLeads, sendLeadReminder } from '../apiCalls/salesAuditApi'
 import { useApi } from '../utils/useApi'
+import { useCurrentUser } from '../utils/roles'
 import {
   LEAD_STAGES,
   getLeadStage,
@@ -18,11 +19,15 @@ import {
 const TABS = {
   [LEAD_STAGES.pending]: {
     label: 'Sales Action Pending',
-    emptyMessage: 'No leads are pending verification.',
+    emptyMessage: 'No leads are waiting on payment verification.',
   },
   [LEAD_STAGES.awaiting]: {
-    label: 'Awaiting',
-    emptyMessage: 'No leads have been verified by an auditor yet.',
+    label: 'Awaiting Audit',
+    emptyMessage: 'No leads with every payment verified are waiting for audit.',
+  },
+  [LEAD_STAGES.audited]: {
+    label: 'Audited',
+    emptyMessage: 'No leads have been audited yet.',
   },
 }
 
@@ -52,7 +57,9 @@ function getPendingSummary(leads, now) {
   ]
 }
 
-function Leads() {
+// All Leads, or with `mine` the auditor's own (auditCoordinator = the signed-in auditor).
+function Leads({ mine = false }) {
+  const user = useCurrentUser()
   const token = useSelector((state) => state.reducers.commonData.authToken)
   const canSend = useSelector((state) =>
     Boolean(state.reducers.commonData.permission.salesAudit?.write),
@@ -73,10 +80,12 @@ function Leads() {
   }, [])
 
   const leadsByStage = useMemo(() => {
-    const grouped = { [LEAD_STAGES.pending]: [], [LEAD_STAGES.awaiting]: [] }
-    data?.leads.forEach((lead) => grouped[getLeadStage(lead)].push(lead))
+    const grouped = Object.fromEntries(Object.keys(TABS).map((stage) => [stage, []]))
+    data?.leads
+      .filter((lead) => !mine || lead.auditCoordinator.toLowerCase() === user.email)
+      .forEach((lead) => grouped[getLeadStage(lead)].push(lead))
     return grouped
-  }, [data])
+  }, [data, mine, user.email])
 
   const visibleLeads = leadsByStage[tab]
   const showSweepToast = data?.mailsSentThisSweep > 0 && dismissedSweep !== data
@@ -96,8 +105,12 @@ function Leads() {
   return (
     <Box>
       <PageHeader
-        title="Leads"
-        subtitle="Leads awaiting audit, and the ones an auditor has verified"
+        title={mine ? 'My Leads' : 'All Leads'}
+        subtitle={
+          mine
+            ? `Leads assigned to you (${user.email}) as audit coordinator; audit them once they reach Awaiting Audit`
+            : 'Every lead; they move to Awaiting Audit once every payment is verified, and are audited there'
+        }
       />
 
       <Tabs
@@ -118,7 +131,7 @@ function Leads() {
         loading={loading}
         error={error}
         empty={visibleLeads.length === 0}
-        emptyMessage={TABS[tab].emptyMessage}
+        emptyMessage={mine ? `${TABS[tab].emptyMessage} (among leads assigned to you)` : TABS[tab].emptyMessage}
         onRetry={reload}
       >
         {tab === LEAD_STAGES.pending && (

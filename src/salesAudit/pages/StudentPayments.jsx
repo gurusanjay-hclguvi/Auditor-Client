@@ -12,16 +12,21 @@ import {
   resolveCategory,
 } from '../utils/paymentCategories'
 import { formatCurrency } from '../utils/formatters'
-import { paths } from '../utils/routePaths'
+import { checkLeadAccess, getHomeLink, useCurrentUser } from '../utils/roles'
 
 function StudentPayments() {
   const { studentId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const category = resolveCategory(searchParams.get('category'))
 
+  const user = useCurrentUser()
+  const homeLink = getHomeLink(user.role)
   const fetchStudentWithPayments = useCallback(
-    (token) => Promise.all([getStudent(token, studentId), getStudentPayments(token, studentId)]),
-    [studentId],
+    (token) =>
+      Promise.all([getStudent(token, studentId), getStudentPayments(token, studentId)]).then(
+        ([student, payments]) => [checkLeadAccess(user, student), payments],
+      ),
+    [studentId, user],
   )
   const { data, loading, error, reload } = useApi(fetchStudentWithPayments)
   const [student, payments] = data ?? []
@@ -39,8 +44,8 @@ function StudentPayments() {
           student &&
           `${student.paymentType} · Paid ${formatCurrency(student.totalPaid)} · Balance ${formatCurrency(student.balanceAmount)}`
         }
-        backTo={paths.leads()}
-        backLabel="Leads"
+        backTo={homeLink.to}
+        backLabel={homeLink.label}
       />
 
       <Tabs

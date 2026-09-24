@@ -1,16 +1,18 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Box, Button, Grid, Paper, Stack, Typography } from '@mui/material'
-import { FactCheckOutlined as FactCheckOutlinedIcon } from '@mui/icons-material'
 import { Link as RouterLink, useParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import YesNoCell from '../components/common/YesNoCell'
-import PaymentsTable from '../components/payments/PaymentsTable'
+import DiscountStatusCell from '../components/common/DiscountStatusCell'
+import PaymentDetails from '../components/payments/PaymentDetails'
+import CheckSourceButton from '../components/ccVerification/CheckSourceButton'
 import { getStudent, getStudentPayments } from '../apiCalls/salesAuditApi'
 import { useApi } from '../utils/useApi'
 import { getSalesFlags } from '../utils/salesFlags'
-import { formatCurrency, orEmpty } from '../utils/formatters'
+import { orEmpty } from '../utils/formatters'
 import { paths } from '../utils/routePaths'
+import { ROLES, checkLeadAccess, getHomeLink, useCurrentUser } from '../utils/roles'
 import { overlineSx } from '../styles/tableSx'
 
 function getProfileItems(student) {
@@ -20,15 +22,18 @@ function getProfileItems(student) {
     { label: 'Email', value: orEmpty(student.email) },
     { label: 'Phone Number', value: orEmpty(student.primaryPhone) },
     { label: 'Course', value: orEmpty(student.course) },
-    { label: 'Course Fee', value: formatCurrency(student.courseValue) },
-    { label: 'Discount Price', value: formatCurrency(student.discountGiven) },
-    { label: 'Payment Type', value: orEmpty(student.paymentType) },
-    { label: 'Partial Split-Up Category', value: orEmpty(student.partialSplitUpCategory) },
-    { label: 'Total Paid', value: formatCurrency(student.totalPaid) },
-    { label: 'Balance Amount', value: formatCurrency(student.balanceAmount) },
+    { label: 'Enrolled On', value: orEmpty(student.enrolledOn) },
+    { label: 'Mode of Study', value: orEmpty(student.modeOfStudy) },
+    { label: 'Preferred Language', value: orEmpty(student.preferredLanguage) },
+    { label: 'Sales Team', value: orEmpty(student.salesTeam) },
+    { label: 'Lead Source', value: orEmpty(student.leadSource) },
     { label: 'Sale Owner', value: orEmpty(student.saleOwner?.trim()) },
     { label: 'Sale Owner Manager', value: orEmpty(student.saleOwnerManager) },
-    { label: 'Discount', value: <YesNoCell value={flags.discount} /> },
+    { label: 'Zen ID', value: orEmpty(student.zenId) },
+    { label: 'Audit Coordinator', value: orEmpty(student.auditCoordinator) },
+    { label: 'Onboard Coordinator', value: orEmpty(student.onboardCoordinator) },
+    { label: 'Pays in Same Month', value: orEmpty(student.paysInSameMonth) },
+    { label: 'Discount', value: <DiscountStatusCell discount={student.discount} /> },
     {
       label: 'Down Payment',
       value: <YesNoCell value={flags.downPayment} to={paymentsLink('downPayment')} />,
@@ -47,35 +52,35 @@ function getProfileItems(student) {
 
 function StudentDetail() {
   const { studentId } = useParams()
+  const user = useCurrentUser()
+  const homeLink = getHomeLink(user.role)
   const fetchStudentWithPayments = useCallback(
-    (token) => Promise.all([getStudent(token, studentId), getStudentPayments(token, studentId)]),
-    [studentId],
+    (token) =>
+      Promise.all([getStudent(token, studentId), getStudentPayments(token, studentId)]).then(
+        ([student, payments]) => [checkLeadAccess(user, student), payments],
+      ),
+    [studentId, user],
   )
   const { data, loading, error, reload } = useApi(fetchStudentWithPayments)
   const [student, payments] = data ?? []
+  const [nowMs] = useState(() => Date.now())
 
   return (
     <Box>
       <PageHeader
         title={student?.studentFullName ?? 'Student'}
         subtitle={student?.course}
-        backTo={paths.leads()}
-        backLabel="Leads"
+        backTo={homeLink.to}
+        backLabel={homeLink.label}
         action={
           student && (
             <Stack direction="row" spacing={1}>
-              {student.confirmationCallLink && (
-                <Button
-                  component={RouterLink}
-                  to={paths.ccVerification(student.id)}
-                  startIcon={<FactCheckOutlinedIcon />}
-                >
-                  Verify CC
+              <CheckSourceButton leadId={student.id} link={student.confirmationCallLink} />
+              {user.role === ROLES.auditor && (
+                <Button component={RouterLink} to={paths.leadAudit(student.id)} variant="contained">
+                  Open audit
                 </Button>
               )}
-              <Button component={RouterLink} to={paths.leadAudit(student.id)} variant="contained">
-                Open audit
-              </Button>
             </Stack>
           )
         }
@@ -95,17 +100,7 @@ function StudentDetail() {
               </Grid>
             </Paper>
 
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-                All Transactions
-              </Typography>
-              <PageState
-                empty={payments.length === 0}
-                emptyMessage="No transactions recorded for this student."
-              >
-                <PaymentsTable payments={payments} />
-              </PageState>
-            </Box>
+            <PaymentDetails student={student} payments={payments} nowMs={nowMs} />
           </Stack>
         )}
       </PageState>

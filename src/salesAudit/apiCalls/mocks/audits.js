@@ -1,11 +1,21 @@
-// Auditor decisions ("Mark verified → Awaiting"), keyed by lead. In memory, reset on reload.
+import { MOCK_STUDENTS } from './students'
+
+// Auditor decisions ("Mark audited": Awaiting → Audited), keyed by lead. In memory, reset on
+// reload. Only leads with every payment verified reach Awaiting, so the two mock audits are on the
+// first two such leads: one clean, one with an override reason.
 const hoursAgo = (hours) => Math.floor(Date.now() / 1000) - hours * 60 * 60
 
+const [clean, overridden] = MOCK_STUDENTS.filter((lead) => lead.allPaymentsVerified)
+
 export const MOCK_AUDITS = {
-  'stu-1001': { auditedAt: hoursAgo(30), auditedBy: 'Audit Team', overrideReason: '' },
-  'stu-1010': {
-    auditedAt: hoursAgo(100),
-    auditedBy: 'Audit Team',
-    overrideReason: 'CC shared with the learner on WhatsApp; mail upload pending.',
-  },
+  ...(clean && {
+    [clean.id]: { auditedAt: hoursAgo(30), auditedBy: 'Audit Team', overrideReason: '' },
+  }),
+  ...(overridden && {
+    [overridden.id]: {
+      auditedAt: hoursAgo(100),
+      auditedBy: 'Audit Team',
+      overrideReason: 'CC shared with the learner on WhatsApp; mail upload pending.',
+    },
+  }),
 }

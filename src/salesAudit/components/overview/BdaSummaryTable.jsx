@@ -1,9 +1,7 @@
-import { Button, Typography } from '@mui/material'
-import { Link as RouterLink } from 'react-router-dom'
+import { Typography } from '@mui/material'
 import DataTable from '../common/DataTable'
 import { RESPONSE_TARGET_HOURS } from '../../utils/auditHistory'
 import { EMPTY_VALUE, formatDuration } from '../../utils/formatters'
-import { paths } from '../../utils/routePaths'
 import { MUTED_TEXT } from '../../styles/tableSx'
 
 const TARGET_S = RESPONSE_TARGET_HOURS * 60 * 60
@@ -65,18 +63,6 @@ function getColumns(periodLabel) {
             {row.medianResolutionS > TARGET_S ? ' · over target' : ''}
           </Typography>
         ),
-    },
-    {
-      label: 'Action',
-      render: (row) => (
-        <Button
-          component={RouterLink}
-          to={`${paths.bda}?bda=${encodeURIComponent(row.bda.email)}`}
-          size="small"
-        >
-          Open BDA view
-        </Button>
-      ),
     },
   ]
 }

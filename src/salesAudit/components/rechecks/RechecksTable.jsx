@@ -1,9 +1,14 @@
-import { Box, Button, Chip, CircularProgress, Link, Stack } from '@mui/material'
+import { Box, Button, Chip, CircularProgress, Link, Stack, Typography } from '@mui/material'
 import { TaskAltRounded as TaskAltRoundedIcon } from '@mui/icons-material'
 import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
 import MailAlertStatus from '../common/MailAlertStatus'
-import { RECHECK_CATEGORIES, RECHECK_STATUS } from '../../utils/recheckStatus'
+import {
+  RECHECK_CATEGORIES,
+  RECHECK_STATUS,
+  getCategoryLabel,
+  getRecheckCategories,
+} from '../../utils/recheckStatus'
 import { EMPTY_VALUE, contactName, formatDateTime } from '../../utils/formatters'
 import { paths } from '../../utils/routePaths'
 
@@ -27,21 +32,31 @@ function getColumns({ canEdit, resolvingId, onResolve }) {
         ),
     },
     {
-      label: 'Category',
-      render: (row) => {
-        const category = RECHECK_CATEGORIES[row.category]
-        return category ? (
-          <Chip label={category.label} size="small" color={category.color} variant="outlined" />
-        ) : (
-          row.category
-        )
-      },
+      label: 'Categories',
+      render: (row) => (
+        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 140 }}>
+          {getRecheckCategories(row).map((key) => (
+            <Chip
+              key={key}
+              label={getCategoryLabel(key)}
+              size="small"
+              color={RECHECK_CATEGORIES[key]?.color ?? 'default'}
+              variant="outlined"
+            />
+          ))}
+        </Stack>
+      ),
     },
     {
       label: 'Issue',
       render: (row) => (
         <Box sx={{ minWidth: 260, maxWidth: 420, whiteSpace: 'normal' }}>{row.notes}</Box>
       ),
+    },
+    {
+      label: 'SR ID · Attempt',
+      render: (row) =>
+        row.srId ? `${row.srId}${row.attempt ? ` · #${row.attempt}` : ''}` : EMPTY_VALUE,
     },
     { label: 'Raised By', render: (row) => row.raisedBy || EMPTY_VALUE },
     { label: 'BDA', render: (row) => contactName(row.lead?.saleOwner) },
@@ -85,7 +100,11 @@ function getColumns({ canEdit, resolvingId, onResolve }) {
     {
       label: 'Action',
       render: (row) =>
-        row.status === 'open' ? (
+        row.status === 'open' && row.source === 'zoho' ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Close the ticket in Zoho
+          </Typography>
+        ) : row.status === 'open' ? (
           <Button
             size="small"
             disabled={resolvingId === row.id}

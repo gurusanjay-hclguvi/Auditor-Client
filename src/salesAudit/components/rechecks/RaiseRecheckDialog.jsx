@@ -3,10 +3,13 @@ import {
   Alert,
   Autocomplete,
   Button,
+  Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  ListItemText,
   MenuItem,
   Stack,
   TextField,
@@ -17,24 +20,29 @@ import { contactName } from '../../utils/formatters'
 import { MUTED_TEXT } from '../../styles/tableSx'
 
 // Mount with a fresh `key` per open so the form starts from `initialValues` each time.
-// initialValues: optional { leadId, category, notes }, e.g. pre-filled from a detected mismatch.
+// initialValues: optional { leadId, category | categories, notes }, e.g. pre-filled from a detected
+// mismatch. More than one category can be picked.
 function RaiseRecheckDialog({ open, leads, initialValues, onClose, onSubmit }) {
   const [form, setForm] = useState(() => ({
     lead: leads.find((lead) => lead.id === initialValues?.leadId) ?? null,
-    category: initialValues?.category ?? '',
+    categories: initialValues?.categories ?? (initialValues?.category ? [initialValues.category] : []),
     notes: initialValues?.notes ?? '',
   }))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
-  const canSubmit = form.lead && form.category && form.notes.trim() && !submitting
+  const canSubmit = form.lead && form.categories.length > 0 && form.notes.trim() && !submitting
   const update = (field) => (value) => setForm((current) => ({ ...current, [field]: value }))
 
   async function handleSubmit() {
     setSubmitting(true)
     setError(null)
     try {
-      await onSubmit({ leadId: form.lead.id, category: form.category, notes: form.notes.trim() })
+      await onSubmit({
+        leadId: form.lead.id,
+        categories: form.categories,
+        notes: form.notes.trim(),
+      })
     } catch (submitError) {
       setError(submitError.message)
       setSubmitting(false)
@@ -62,14 +70,29 @@ function RaiseRecheckDialog({ open, leads, initialValues, onClose, onSubmit }) {
           )}
           <TextField
             select
-            label="Category"
+            label="Categories"
             required
-            value={form.category}
-            onChange={(event) => update('category')(event.target.value)}
+            helperText="Pick every category this recheck covers"
+            value={form.categories}
+            onChange={(event) => {
+              const { value } = event.target
+              update('categories')(typeof value === 'string' ? value.split(',') : value)
+            }}
+            SelectProps={{
+              multiple: true,
+              renderValue: (selected) => (
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+                  {selected.map((key) => (
+                    <Chip key={key} label={RECHECK_CATEGORIES[key]?.label ?? key} size="small" />
+                  ))}
+                </Stack>
+              ),
+            }}
           >
             {Object.entries(RECHECK_CATEGORIES).map(([key, { label }]) => (
-              <MenuItem key={key} value={key}>
-                {label}
+              <MenuItem key={key} value={key} dense>
+                <Checkbox size="small" checked={form.categories.includes(key)} />
+                <ListItemText primary={label} />
               </MenuItem>
             ))}
           </TextField>

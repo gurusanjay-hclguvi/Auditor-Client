@@ -7,7 +7,8 @@ import {
 } from './compareFields'
 import { getValueAtPath } from './compareLeadData'
 import { getCreditStatus } from './leadStatus'
-import { RECHECK_CATEGORIES, getCcStatus } from './recheckStatus'
+import { formatRecheckCategories, getCcStatus } from './recheckStatus'
+import { DISCOUNT_STATUS } from './zohoLead'
 import { formatCurrency } from './formatters'
 import { paths } from './routePaths'
 
@@ -41,8 +42,9 @@ export const isEmiPaymentType = (paymentType) => /EMI/.test(paymentType ?? '')
 export function getPaymentMode(paymentType = '') {
   if (paymentType === 'EMI + Partial Payment') return 'emiPartial'
   if (/^EMI/.test(paymentType)) return 'emi'
-  if (paymentType === 'Direct - Partial Payment') return 'partial'
-  if (paymentType === 'Subscription') return 'subscription'
+  // "Direct - Partial Payment", "Intra Month Partial", ...
+  if (/Partial/i.test(paymentType)) return 'partial'
+  if (/Subscription/i.test(paymentType)) return 'subscription'
   return 'full'
 }
 
@@ -165,37 +167,24 @@ function creditCheck(lead, key, label, { required, naReason }) {
   }
 }
 
-// A discount on the lead needs an approved request (DiscountData) for the same amount.
-function discountCheck(lead, discount) {
-  const given = Number(lead.discountGiven)
-  if (!(given > 0)) return notApplicable('No discount given')
-  const givenLabel = formatCurrency(lead.discountGiven)
-  if (!discount) {
-    return fail(`${givenLabel} discount given without a discount request`, {
+// A discount needs its request approved (CourseDiscountDetails status, or a verified "Discount"
+// credit note when there is no request on the lead).
+function discountCheck(lead) {
+  const { discount } = lead
+  if (!discount) return notApplicable('No discount given')
+  const label = formatCurrency(discount.amount)
+  const by = discount.requestedBy ? ` by ${discount.requestedBy}` : ''
+  if (discount.status !== DISCOUNT_STATUS.approved) {
+    return fail(`${label} discount requested${by}, not approved`, {
       recheck: {
         category: 'approval',
-        notes: `A ${givenLabel} discount was given but no discount request was found.`,
+        notes: `A ${label} discount was requested${by} but hasn't been approved (${
+          discount.zohoStatus || 'credit note not verified'
+        }).`,
       },
     })
   }
-  if (discount.status !== 'Approved') {
-    return fail(`Discount request is ${discount.status || 'not approved'}`, {
-      recheck: {
-        category: 'approval',
-        notes: `A ${givenLabel} discount was given but the request is ${discount.status || 'not approved'}.`,
-      },
-    })
-  }
-  if (Number(discount.discountValue) !== given) {
-    const approvedLabel = formatCurrency(discount.discountValue)
-    return fail(`Approved ${approvedLabel}, given ${givenLabel}`, {
-      recheck: {
-        category: 'approval',
-        notes: `Discount given (${givenLabel}) differs from the approved discount (${approvedLabel}).`,
-      },
-    })
-  }
-  return pass(`${givenLabel} discount approved`)
+  return pass(`${label} discount approved`)
 }
 
 // Rows where two named sources both have a value and disagree.
@@ -216,13 +205,10 @@ export function buildChecklist(audit, { sourceList, sections }, openRechecks) {
   const { lead, sources, pointsCovered } = audit
   const allRows = sections.flatMap((section) => section.rows)
   const emiRows = sections.find((section) => section.key === 'emi')?.rows ?? []
-  // EMI-only plans are financed by the loan, and subscriptions are paid monthly, so neither has a
-  // separate initial payment (Credit_Part1).
-  const initialNa = /^EMI - /.test(lead.paymentType ?? '')
-    ? 'Covered by the EMI loan'
-    : lead.paymentType === 'Subscription'
-      ? 'Paid as monthly subscriptions'
-      : null
+  // Subscriptions are paid monthly, so they have no separate initial payment (Credit_Part1).
+  // Every other plan, EMI included, records one.
+  const initialNa =
+    getPaymentMode(lead.paymentType) === 'subscription' ? 'Paid as monthly subscriptions' : null
 
   const items = [
     {
@@ -333,7 +319,7 @@ export function buildChecklist(audit, { sourceList, sections }, openRechecks) {
   items.push({
     key: 'discount',
     label: 'Discount approved',
-    ...discountCheck(lead, audit.discount),
+    ...discountCheck(lead),
   })
 
   items.push({
@@ -342,8 +328,8 @@ export function buildChecklist(audit, { sourceList, sections }, openRechecks) {
     ...(openRechecks.length
       ? fail(
           `${openRechecks.length} open: ${openRechecks
-            .map((recheck) => RECHECK_CATEGORIES[recheck.category]?.label ?? recheck.category)
-            .join(', ')}`,
+            .map(formatRecheckCategories)
+            .join('; ')}`,
           { link: { label: 'View rechecks', to: `${paths.rechecks()}?status=open` } },
         )
       : pass('Nothing waiting on the BDA')),

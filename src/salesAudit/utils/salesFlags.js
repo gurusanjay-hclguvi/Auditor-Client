@@ -1,4 +1,4 @@
-const PARTIAL_PAYMENT_TYPES = new Set(['Direct - Partial Payment', 'EMI + Partial Payment'])
+import { getPaymentMode } from './auditChecks'
 
 const hasBalanceDue = (student) => Number(student.balanceAmount) > 0
 
@@ -6,10 +6,14 @@ const hasBalanceDue = (student) => Number(student.balanceAmount) > 0
 // the payment type uses that plan and a balance is still outstanding.
 export function getSalesFlags(student) {
   return {
-    discount: Number(student.discountGiven) > 0,
+    discount: Boolean(student.discount),
     downPayment: Boolean(student.financialDetailsTypes?.includes('Credit_Booking_Amount')),
-    emiDetails: /EMI/.test(student.paymentType),
-    partialReminders: PARTIAL_PAYMENT_TYPES.has(student.paymentType) && hasBalanceDue(student),
-    subscriptionReminders: student.paymentType === 'Subscription' && hasBalanceDue(student),
+    // Zoho can send EMIdetails with a non-EMI plan too (an earlier loan application).
+    emiDetails: Boolean(student.emiDetails) || /EMI/.test(student.paymentType),
+    partialReminders:
+      ['partial', 'emiPartial'].includes(getPaymentMode(student.paymentType)) &&
+      hasBalanceDue(student),
+    subscriptionReminders:
+      getPaymentMode(student.paymentType) === 'subscription' && hasBalanceDue(student),
   }
 }

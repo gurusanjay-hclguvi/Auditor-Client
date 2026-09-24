@@ -1,31 +1,24 @@
-// Fake EMI vendor (loan partner) records, keyed by lead. Mock-only until the vendor integration
-// exists. Sana's vendor record quotes a different monthly EMI from Zoho and the CC mail.
-export const MOCK_VENDOR_EMI = {
-  'stu-1004': {
-    vendor: 'Loan Partner',
-    loanAmount: '₹55999',
-    monthlyEmi: '₹18667',
-    roi: '0%',
-    dueDate: '5th October',
-    tenure: '3 months',
-    disbursalStatus: 'Disbursed',
-  },
-  'stu-1005': {
-    vendor: 'Loan Partner',
-    loanAmount: '₹77800',
-    monthlyEmi: '₹6500',
-    roi: '0%',
-    dueDate: '5th October',
-    tenure: '12 months',
-    disbursalStatus: 'Disbursed',
-  },
-  'stu-1006': {
-    vendor: 'Loan Partner',
-    loanAmount: '₹48000',
-    monthlyEmi: '₹2600',
-    roi: '24.5%',
-    dueDate: '5th October',
-    tenure: '24 months',
-    disbursalStatus: 'Approved',
-  },
-}
+import { MOCK_STUDENTS } from './students'
+
+// Fake EMI vendor (loan partner) records, keyed by lead: the vendor's copy of the lead's EMI
+// application. Mock-only until the vendor integration exists. Every third one quotes a different
+// monthly EMI from Zoho, so the "EMI terms match the vendor" check has something to catch.
+export const MOCK_VENDOR_EMI = Object.fromEntries(
+  MOCK_STUDENTS.filter((lead) => lead.emiDetails && /EMI/.test(lead.paymentType)).map(
+    (lead, index) => {
+      const emi = lead.emiDetails
+      const monthly = Number(emi.monthlyEmi.replace(/[^\d.]/g, ''))
+      return [
+        lead.id,
+        {
+          vendor: emi.vendor,
+          loanAmount: emi.loanAmount,
+          monthlyEmi: index % 3 === 1 && monthly ? `₹${monthly + 200}` : emi.monthlyEmi,
+          roi: emi.roi,
+          tenure: emi.tenure,
+          disbursalStatus: emi.status,
+        },
+      ]
+    },
+  ),
+)

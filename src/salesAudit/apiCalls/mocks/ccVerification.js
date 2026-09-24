@@ -1,150 +1,77 @@
-// Fake CC-verification payloads: the system side plus a "scraped from the CC" side, which is
-// the system side with a few deliberate mismatches injected to demonstrate flagging.
-// `pointsCovered` lists which required points the CC mail covered (see REQUIRED_CC_POINTS in
-// utils/auditChecks.js).
+import { MOCK_STUDENTS } from './students'
+import { getPaymentMode } from '../../utils/auditChecks'
+import { displayZohoDate } from '../../utils/zohoLead'
+
+// Fake CC-verification payloads for every lead with a CC: the system side built from the lead,
+// plus a "scraped from the CC" side that copies it with a deliberate mismatch on every fourth
+// lead. `pointsCovered` lists which required points the CC covered (see REQUIRED_CC_POINTS in
+// utils/auditChecks.js); every fifth CC misses the refund policy.
 const ALL_POINTS = ['fee', 'paymentPlan', 'startDate', 'batchTiming', 'medium', 'refundPolicy']
 
-function setAtPath(target, path, value) {
-  const parts = path.split('.')
-  const last = parts.pop()
-  parts.reduce((node, part) => node[part], target)[last] = value
+const rupees = (value) => (value === '' || value == null ? '' : `₹${value}`)
+
+function systemRecord(lead) {
+  const splits = lead.partialSplitUpCategory.split('-').filter(Boolean)
+  const installments = lead.schedule.items.map((item, index) => ({
+    percentage: splits[index + 1] ? `${splits[index + 1]}%` : '',
+    dueDate: displayZohoDate(item.dueDate),
+    amount: rupees(item.amount),
+  }))
+  const emi = lead.emiDetails
+  return {
+    personal: {
+      learnerName: lead.studentFullName,
+      email: lead.email,
+      contactNumber: lead.primaryPhone,
+    },
+    courseDetails: {
+      courseName: lead.course,
+      mode: lead.modeOfStudy,
+      medium: lead.preferredLanguage,
+    },
+    payment: {
+      totalFee: rupees(lead.courseValue),
+      downPayment: rupees(lead.credits.bookingAmount?.amount),
+      ...(installments.length && { installments }),
+      ...(emi && /EMI/.test(lead.paymentType) && {
+        emi: { loanAmount: emi.loanAmount, monthlyEmi: emi.monthlyEmi, roi: emi.roi },
+      }),
+    },
+  }
 }
 
-function ccRecord({
-  paymentMode,
-  partialSplitUpCategory = '',
-  system,
-  mismatches = {},
-  pointsCovered = ALL_POINTS,
-}) {
-  const scraped = structuredClone(system)
-  Object.entries(mismatches).forEach(([path, value]) => setAtPath(scraped, path, value))
-  return { paymentMode, partialSplitUpCategory, system, scraped, pointsCovered }
-}
+// One deliberate difference per affected lead, rotating through the kinds of mistakes a CC has.
+const MISMATCHES = [
+  (scraped) => {
+    scraped.personal.contactNumber = `${scraped.personal.contactNumber}0`
+  },
+  (scraped) => {
+    scraped.courseDetails.medium = scraped.courseDetails.medium === 'Tamil' ? 'English' : 'Tamil'
+  },
+  (scraped) => {
+    scraped.payment.totalFee = `${scraped.payment.totalFee}0`
+  },
+  (scraped) => {
+    if (scraped.payment.emi) scraped.payment.emi.monthlyEmi = `${scraped.payment.emi.monthlyEmi}5`
+    else scraped.courseDetails.mode = 'WeekDAY'
+  },
+]
 
-const onlineWeekday = { time: '7PM', mode: 'Online - Weekday', medium: 'English' }
-
-export const MOCK_CC_VERIFICATION = {
-  'stu-1001': ccRecord({
-    paymentMode: 'full',
-    system: {
-      personal: {
-        learnerName: 'Aarav Test',
-        email: 'aarav.test@example.com',
-        contactNumber: '+910000000001',
+export const MOCK_CC_VERIFICATION = Object.fromEntries(
+  MOCK_STUDENTS.filter((lead) => lead.confirmationCallLink).map((lead, index) => {
+    const system = systemRecord(lead)
+    const scraped = structuredClone(system)
+    if (index % 4 === 0) MISMATCHES[(index / 4) % MISMATCHES.length](scraped)
+    return [
+      lead.id,
+      {
+        paymentMode: getPaymentMode(lead.paymentType),
+        partialSplitUpCategory: lead.partialSplitUpCategory,
+        system,
+        scraped,
+        pointsCovered:
+          index % 5 === 2 ? ALL_POINTS.filter((point) => point !== 'refundPolicy') : ALL_POINTS,
       },
-      courseDetails: {
-        courseName: 'Zen Student Program - Full Stack Development',
-        duration: '6 months',
-        startDate: 'June 15th',
-        ...onlineWeekday,
-      },
-      payment: { totalFee: '₹73800', downPayment: '₹999 (Non-Refundable)' },
-    },
+    ]
   }),
-  'stu-1002': ccRecord({
-    paymentMode: 'partial',
-    partialSplitUpCategory: '40-30-30',
-    system: {
-      personal: {
-        learnerName: 'Diya Sample',
-        email: 'diya.sample@example.com',
-        contactNumber: '+910000000002',
-      },
-      courseDetails: {
-        courseName: 'Zen UI/UX Program',
-        duration: '4 months',
-        startDate: 'May 20th',
-        ...onlineWeekday,
-      },
-      payment: {
-        totalFee: '₹75000',
-        downPayment: '₹999 (Non-Refundable)',
-        installments: [
-          { percentage: '40%', dueDate: '14/05/2025', amount: '₹30000' },
-          { percentage: '30%', dueDate: '14/06/2025', amount: '₹22000' },
-          { percentage: '30%', dueDate: '14/07/2025', amount: '₹22001' },
-        ],
-      },
-    },
-    mismatches: { 'payment.installments.1.amount': '₹22500' },
-  }),
-  'stu-1003': ccRecord({
-    paymentMode: 'subscription',
-    partialSplitUpCategory: '25-25-25-25',
-    system: {
-      personal: {
-        learnerName: 'Kabir Demo',
-        email: 'kabir.demo@example.com',
-        contactNumber: '+910000000003',
-      },
-      courseDetails: {
-        courseName: 'Zen Student Program - Full Stack Development',
-        duration: '6 months',
-        startDate: 'December 8th',
-        ...onlineWeekday,
-      },
-      payment: {
-        totalFee: '₹78800',
-        downPayment: '₹2499 (Non-Refundable)',
-        installments: [
-          { percentage: '25%', dueDate: '16/12/2025', amount: '₹18768' },
-          { percentage: '25%', dueDate: '16/01/2026', amount: '₹19178' },
-          { percentage: '25%', dueDate: '16/02/2026', amount: '₹19178' },
-          { percentage: '25%', dueDate: '16/03/2026', amount: '₹19177' },
-        ],
-      },
-    },
-    mismatches: { 'personal.contactNumber': '+910000000030' },
-  }),
-  'stu-1005': ccRecord({
-    paymentMode: 'emi',
-    system: {
-      personal: {
-        learnerName: 'Rohan Mock',
-        email: 'rohan.mock@example.com',
-        contactNumber: '+910000000005',
-      },
-      courseDetails: {
-        courseName: 'Zen Student Program',
-        duration: '6 months',
-        startDate: 'September 7th',
-        ...onlineWeekday,
-      },
-      payment: {
-        totalFee: '₹78800',
-        downPayment: '₹1000 (Non-Refundable)',
-        emi: { loanAmount: '₹77800', monthlyEmi: '₹6500', roi: '0%', dueDate: '5th October' },
-      },
-    },
-    mismatches: { 'payment.emi.monthlyEmi': '₹6800' },
-  }),
-  'stu-1006': ccRecord({
-    paymentMode: 'emiPartial',
-    partialSplitUpCategory: '50-50',
-    system: {
-      personal: {
-        learnerName: 'Sana Example',
-        email: 'sana.example@example.com',
-        contactNumber: '+910000000006',
-      },
-      courseDetails: {
-        courseName: 'Zen Data Science Program',
-        duration: '6 months',
-        startDate: 'September 7th',
-        ...onlineWeekday,
-      },
-      payment: {
-        totalFee: '₹85999',
-        downPayment: '₹999 (Non-Refundable)',
-        emi: { loanAmount: '₹48000', monthlyEmi: '₹2491', roi: '24.5%', dueDate: '5th October' },
-        installments: [
-          { percentage: '50%', dueDate: '04/10/2026', amount: '₹18500' },
-          { percentage: '50%', dueDate: '04/11/2026', amount: '₹18500' },
-        ],
-      },
-    },
-    mismatches: { 'courseDetails.medium': 'Tamil' },
-    pointsCovered: ALL_POINTS.filter((point) => point !== 'refundPolicy'),
-  }),
-}
+)

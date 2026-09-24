@@ -9,6 +9,22 @@ export const PAYMENT_CATEGORIES = {
     matches: (type) => type === 'Credit_RemainingBalance',
   },
   subscription: { label: 'Subscription', matches: (type) => /^Subscription \d+$/.test(type) },
+  discount: { label: 'Discount', matches: (type) => type === 'Discount' },
+}
+
+const TYPE_LABELS = {
+  Credit_Booking_Amount: 'Down payment',
+  Credit_Part1: 'Initial payment',
+  Credit_RemainingBalance: 'Remaining balance',
+  Credit_EMI: 'EMI disbursal',
+  Discount: 'Discount (credit note)',
+}
+
+// A financialDetails `type` in words: "Credit_Part2" -> "Partial 2"; unknown types as they are.
+export function getPaymentTypeLabel(type) {
+  if (TYPE_LABELS[type]) return TYPE_LABELS[type]
+  const part = type?.match(/^Credit_Part(\d+)$/)?.[1]
+  return part ? `Partial ${part}` : type || ''
 }
 
 export function resolveCategory(category) {

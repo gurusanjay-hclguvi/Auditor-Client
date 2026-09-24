@@ -26,3 +26,5 @@ claude_enrolment_financial_data_cases.md
 RULES.md
 .env
 API_ENDPOINTS.md
+# Real Zoho exports (personal data); anonymize with scripts/anonymizeZohoSample.mjs
+random.json

@@ -3,9 +3,8 @@ import { getContactEmail } from '../../utils/contacts'
 import { RECHECK_CATEGORIES } from '../../utils/recheckStatus'
 
 // Mock-only history (about 8 weeks) so the overview can show trends, repeat patterns and
-// response times. Everything is relative to now. Deliberate patterns: Sales Owner Two keeps
-// getting Payment rechecks, Diya Sample (stu-1002) has several rechecks, and Sales Owner Three
-// resolves rechecks slowly.
+// response times. Everything is relative to now. Deliberate pattern: stu-1002 and stu-1005 get
+// several rechecks, so the Overview has repeat issues to show.
 const HOUR = 60 * 60
 const hoursAgo = (hours) => Math.floor(Date.now() / 1000) - hours * HOUR
 
@@ -46,7 +45,7 @@ export const HISTORICAL_RECHECKS = RESOLVED_RECHECKS.map(
     return {
       id,
       leadId,
-      category,
+      categories: [category],
       notes: NOTES[category],
       status: 'resolved',
       raisedBy: 'Audit Team',

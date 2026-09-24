@@ -1,12 +1,13 @@
 import { useCallback, useMemo } from 'react'
-import { Box, Chip, Divider, Stack } from '@mui/material'
+import { Box, Grid } from '@mui/material'
 import { useParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
-import ComparisonPanel from '../components/comparison/ComparisonPanel'
-import { getCcVerification } from '../apiCalls/salesAuditApi'
+import RecordPanel from '../components/ccVerification/RecordPanel'
+import SourcePdfPanel from '../components/ccVerification/SourcePdfPanel'
+import { getCcVerification, getStudent } from '../apiCalls/salesAuditApi'
 import { useApi } from '../utils/useApi'
-import { compareLeadData } from '../utils/compareLeadData'
+import { getValueAtPath } from '../utils/compareLeadData'
 import {
   COURSE_FIELDS,
   PERSONAL_FIELDS,
@@ -14,78 +15,76 @@ import {
   getPaymentFields,
 } from '../utils/compareFields'
 import { paths } from '../utils/routePaths'
+import { checkLeadAccess, useCurrentUser } from '../utils/roles'
 
-function buildSections({ paymentMode, partialSplitUpCategory, system, scraped }) {
+function toRows(record, fields) {
+  return fields.map(({ key, label }) => ({
+    key,
+    label,
+    value: String(getValueAtPath(record, key) ?? '').trim(),
+  }))
+}
+
+function buildSections({ paymentMode, partialSplitUpCategory, system }) {
   const installmentCount = getInstallmentCount(paymentMode, partialSplitUpCategory)
   return [
-    { title: 'Personal Details', rows: compareLeadData(system, scraped, PERSONAL_FIELDS) },
-    { title: 'Course Details', rows: compareLeadData(system, scraped, COURSE_FIELDS) },
+    { title: 'Personal Details', rows: toRows(system, PERSONAL_FIELDS) },
+    { title: 'Course Details', rows: toRows(system, COURSE_FIELDS) },
     {
       title: 'Payment Details',
-      rows: compareLeadData(system, scraped, getPaymentFields(paymentMode, installmentCount)),
+      rows: toRows(system, getPaymentFields(paymentMode, installmentCount)),
     },
   ]
 }
 
+// Check source: the database record on the left, the CC source (PDF or call recording) on the
+// right.
 function CcVerification() {
   const { studentId } = useParams()
+  const user = useCurrentUser()
   const fetchVerification = useCallback(
-    (token) => getCcVerification(token, studentId),
-    [studentId],
+    (token) =>
+      Promise.all([getCcVerification(token, studentId), getStudent(token, studentId)]).then(
+        ([verification, student]) => {
+          checkLeadAccess(user, student)
+          return verification
+        },
+      ),
+    [studentId, user],
   )
   const { data, loading, error, reload } = useApi(fetchVerification)
 
   const sections = useMemo(() => (data ? buildSections(data) : []), [data])
-  const mismatchCount = sections.reduce(
-    (total, section) => total + section.rows.filter((row) => !row.matches).length,
-    0,
-  )
 
   return (
     <Box>
       <PageHeader
-        title={data?.system.personal.learnerName ?? 'CC Verification'}
-        subtitle="Lead record vs. the scraped confirmation-call PDF"
+        title={data?.system.personal?.learnerName ?? 'Check source'}
+        subtitle="Database record next to the confirmation-call source"
         backTo={paths.student(studentId)}
         backLabel="Student details"
-        action={
-          data && (
-            <Chip
-              label={
-                mismatchCount === 0
-                  ? 'All fields match'
-                  : `${mismatchCount} field${mismatchCount === 1 ? '' : 's'} flagged`
-              }
-              color={mismatchCount === 0 ? 'success' : 'warning'}
-            />
-          )
-        }
       />
 
-      <PageState
-        loading={loading}
-        loadingMessage="Scraping CC PDF..."
-        error={error}
-        onRetry={reload}
-      >
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
-          divider={<Divider orientation="vertical" flexItem />}
-        >
-          <ComparisonPanel
-            title="System Data"
-            subtitle="From the lead record"
-            sections={sections}
-            valueKey="systemValue"
-          />
-          <ComparisonPanel
-            title="Scraped PDF Data"
-            subtitle="Extracted from the CC document"
-            sections={sections}
-            valueKey="scrapedValue"
-          />
-        </Stack>
+      <PageState loading={loading} error={error} onRetry={reload}>
+        {data && (
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid item xs={12} md={5}>
+              <RecordPanel sections={sections} />
+            </Grid>
+            <Grid
+              item
+              xs={12}
+              md={7}
+              sx={{
+                position: { md: 'sticky' },
+                top: { md: 80 },
+                height: { xs: '80vh', md: 'calc(100vh - 110px)' },
+              }}
+            >
+              <SourcePdfPanel url={data.pdfUrl} />
+            </Grid>
+          </Grid>
+        )}
       </PageState>
     </Box>
   )

@@ -1,13 +1,16 @@
 import { useMemo } from 'react'
-import { Button, Link, Typography } from '@mui/material'
+import { Box, Button, Link, Tooltip, Typography } from '@mui/material'
 import { FactCheckOutlined as FactCheckOutlinedIcon } from '@mui/icons-material'
 import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
+import ColumnPicker from '../common/ColumnPicker'
+import { useColumnVisibility } from '../../utils/useColumnVisibility'
 import YesNoCell from '../common/YesNoCell'
+import DiscountStatusCell from '../common/DiscountStatusCell'
 import CreditStatusCell from '../leads/CreditStatusCell'
 import EscalationCell from '../leads/EscalationCell'
 import { getSalesFlags } from '../../utils/salesFlags'
-import { getSapAgeMs, isSapOverdue } from '../../utils/leadStatus'
+import { LEAD_STAGES, getLeadStage, getSapAgeMs, isSapOverdue } from '../../utils/leadStatus'
 import { EMPTY_VALUE, formatCurrency, formatDuration, orEmpty } from '../../utils/formatters'
 import { paths } from '../../utils/routePaths'
 
@@ -19,22 +22,37 @@ function AmountLink({ studentId, value }) {
   )
 }
 
+// Auditing starts in Awaiting (every payment verified); audited leads can be reviewed.
+function AuditCell({ row }) {
+  const stage = getLeadStage(row)
+  if (stage === LEAD_STAGES.pending) {
+    return (
+      <Tooltip title="Auditing starts once Accounts has verified every payment">
+        <span>
+          <Button size="small" disabled>
+            Audit
+          </Button>
+        </span>
+      </Tooltip>
+    )
+  }
+  const audited = stage === LEAD_STAGES.audited
+  return (
+    <Button
+      component={RouterLink}
+      to={paths.leadAudit(row.id)}
+      size="small"
+      variant={audited ? 'text' : 'contained'}
+      disableElevation
+    >
+      {audited ? 'View' : 'Audit'}
+    </Button>
+  )
+}
+
 // Each row is a lead record plus its derived `flags` (see utils/salesFlags).
 const BASE_COLUMNS = [
-  {
-    label: 'Audit',
-    render: (row) => (
-      <Button
-        component={RouterLink}
-        to={paths.leadAudit(row.id)}
-        size="small"
-        variant={row.audit ? 'text' : 'contained'}
-        disableElevation
-      >
-        {row.audit ? 'View' : 'Audit'}
-      </Button>
-    ),
-  },
+  { label: 'Audit', render: (row) => <AuditCell row={row} /> },
   {
     label: 'Student Name',
     render: (row) => (
@@ -53,7 +71,7 @@ const BASE_COLUMNS = [
   { label: 'Course', render: (row) => orEmpty(row.course) },
   { label: 'Course Fee', render: (row) => formatCurrency(row.courseValue) },
   { label: 'Discount Price', render: (row) => formatCurrency(row.discountGiven) },
-  { label: 'Discount', render: (row) => <YesNoCell value={row.flags.discount} /> },
+  { label: 'Discount', render: (row) => <DiscountStatusCell discount={row.discount} /> },
   { label: 'Payment Type', render: (row) => orEmpty(row.paymentType) },
   {
     label: 'Down Payment',
@@ -87,6 +105,7 @@ const BASE_COLUMNS = [
   },
   { label: 'Sale Owner', render: (row) => orEmpty(row.saleOwner?.trim()) },
   { label: 'Sale Owner Manager', render: (row) => orEmpty(row.saleOwnerManager) },
+  { label: 'Audit Coordinator', render: (row) => orEmpty(row.auditCoordinator) },
   {
     label: 'EMI Details',
     render: (row) => (
@@ -159,15 +178,35 @@ function getEscalationColumns({ now, canSend, sendingId, onSend }) {
   ]
 }
 
+// Needed to act on a row, so they can't be hidden.
+const LOCKED_COLUMNS = ['Audit', 'Student Name']
+
 function SalesActionTable({ leads, showEscalation, now, canSend, sendingId, onSend }) {
   const rows = useMemo(
     () => leads.map((lead) => ({ ...lead, flags: getSalesFlags(lead) })),
     [leads],
   )
+  const { isVisible, toggle, showAll } = useColumnVisibility('salesAudit.leadsTable.hiddenColumns')
   const columns = showEscalation
     ? [...BASE_COLUMNS, ...getEscalationColumns({ now, canSend, sendingId, onSend })]
     : BASE_COLUMNS
-  return <DataTable columns={columns} rows={rows} />
+  const visibleColumns = columns.filter(
+    (column) => LOCKED_COLUMNS.includes(column.label) || isVisible(column.label),
+  )
+  return (
+    <>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+        <ColumnPicker
+          labels={columns.map((column) => column.label)}
+          locked={LOCKED_COLUMNS}
+          isVisible={isVisible}
+          onToggle={toggle}
+          onShowAll={showAll}
+        />
+      </Box>
+      <DataTable columns={visibleColumns} rows={rows} />
+    </>
+  )
 }
 
 export default SalesActionTable

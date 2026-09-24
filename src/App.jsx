@@ -1,20 +1,42 @@
 import { Suspense } from 'react'
-import { AppBar, Box, Button, CircularProgress, Container, Toolbar, Typography } from '@mui/material'
-import { useSelector } from 'react-redux'
+import {
+  AppBar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Container,
+  Toolbar,
+  Typography,
+} from '@mui/material'
+import { LogoutRounded as LogoutRoundedIcon } from '@mui/icons-material'
+import { useDispatch, useSelector } from 'react-redux'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import salesAuditRoutes from './salesAudit/routes'
 import salesAuditNavItems from './salesAudit/navItems'
+import Login from './Login'
+import { logOut } from './store/commonDataSlice'
+import { ROLE_LABELS, canUseRoute, useCurrentUser } from './salesAudit/utils/roles'
 
-// Dev shell standing in for the Zen portal: permission-gated nav and routes for the feature.
+// Dev shell standing in for the Zen portal: login, then permission- and role-gated nav and routes.
 function canAccess(permissions, permission) {
   const [key, action] = permission.split('.')
   return Boolean(permissions[key]?.[action === 'edit' ? 'write' : 'read'])
 }
 
 function App() {
+  const dispatch = useDispatch()
+  const user = useCurrentUser()
   const permissions = useSelector((state) => state.reducers.commonData.permission)
-  const routes = salesAuditRoutes.filter((route) => canAccess(permissions, route.permission))
-  const navItems = salesAuditNavItems.filter((item) => permissions[item.key]?.read)
+
+  if (!user) return <Login />
+
+  const routes = salesAuditRoutes.filter(
+    (route) => canAccess(permissions, route.permission) && canUseRoute(user, route.roles),
+  )
+  const navItems = salesAuditNavItems.filter(
+    (item) => permissions[item.key]?.read && canUseRoute(user, item.roles),
+  )
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -34,6 +56,16 @@ function App() {
               {item.label}
             </Button>
           ))}
+          <Box sx={{ flex: 1 }} />
+          <Chip label={`${user.name} · ${ROLE_LABELS[user.role]}`} variant="outlined" />
+          <Button
+            color="inherit"
+            startIcon={<LogoutRoundedIcon />}
+            onClick={() => dispatch(logOut())}
+            sx={{ color: 'text.secondary' }}
+          >
+            Log out
+          </Button>
         </Toolbar>
       </AppBar>
 

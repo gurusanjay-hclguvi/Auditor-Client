@@ -10,9 +10,12 @@ export const CREDIT_TYPES = {
   remainingBalance: 'Credit_RemainingBalance',
 }
 
+// Sales Action Pending until Accounts has verified every payment record; then Awaiting audit,
+// where the auditor checks the lead; Audited once the auditor verifies it.
 export const LEAD_STAGES = {
   pending: 'pending',
   awaiting: 'awaiting',
+  audited: 'audited',
 }
 
 export const VERIFICATION_CHIP = {
@@ -38,22 +41,29 @@ function creditStatuses(lead) {
   return Object.keys(CREDIT_TYPES).map((key) => getCreditStatus(lead.credits?.[key]))
 }
 
-// A lead leaves Sales Action Pending only when an auditor marks it verified (`lead.audit`, set
-// from the Lead Audit Workspace). Payment status feeds the audit checklist, not the stage.
+// Every financialDetails record verified "Yes" moves a lead to Awaiting (`allPaymentsVerified`,
+// set by utils/zohoLead.js); a lead with no payments stays in Sales Action Pending. The auditor
+// can only audit from Awaiting; their decision (`lead.audit`) makes it Audited.
 export function getLeadStage(lead) {
-  return lead.audit ? LEAD_STAGES.awaiting : LEAD_STAGES.pending
+  if (lead.audit) return LEAD_STAGES.audited
+  return lead.allPaymentsVerified ? LEAD_STAGES.awaiting : LEAD_STAGES.pending
 }
+
+export const canAudit = (lead) => getLeadStage(lead) === LEAD_STAGES.awaiting
 
 export function hasCreditStatus(lead, status) {
   return creditStatuses(lead).includes(status)
 }
 
 // Only leads with money paid but not cleanly verified are escalated; unpaid leads have nothing
-// for Accounts to verify.
+// for Accounts to verify. Any payment record that isn't "Yes" counts, as it keeps the lead in
+// Sales Action Pending.
 export function needsEscalation(lead) {
+  const hasUnverifiedRecord =
+    lead.allPaymentsVerified === false && lead.financialDetailsTypes?.length > 0
   return (
     getLeadStage(lead) === LEAD_STAGES.pending &&
-    (hasCreditStatus(lead, 'unverified') || hasCreditStatus(lead, 'mismatch'))
+    (hasUnverifiedRecord || hasCreditStatus(lead, 'unverified') || hasCreditStatus(lead, 'mismatch'))
   )
 }
 

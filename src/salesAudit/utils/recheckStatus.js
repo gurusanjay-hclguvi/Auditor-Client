@@ -8,6 +8,41 @@ export const RECHECK_CATEGORIES = {
   downPayment: { label: 'Down Payment', color: 'error' },
 }
 
+// Zoho's recheck `pendingList` uses its own labels ("Confirmation Call"); these map them to the
+// categories above. A label with no match is kept as its own category (shown as it is).
+const ZOHO_PENDING_LABELS = {
+  'confirmation call': 'ccPending',
+  'cc pending': 'ccPending',
+  cc: 'ccPending',
+  payment: 'payment',
+  'payment details': 'payment',
+  emi: 'emi',
+  'emi details': 'emi',
+  approval: 'approval',
+  'discount approval': 'approval',
+  discount: 'approval',
+  'missed points in cc': 'missedPointsInCc',
+  'down payment': 'downPayment',
+  'booking amount': 'downPayment',
+}
+
+export function toCategoryKey(label) {
+  const text = String(label ?? '').trim()
+  if (RECHECK_CATEGORIES[text]) return text
+  return ZOHO_PENDING_LABELS[text.toLowerCase()] ?? text
+}
+
+export const getCategoryLabel = (key) => RECHECK_CATEGORIES[key]?.label ?? key
+
+// A recheck can cover several categories (`categories`); older records had one `category`.
+export function getRecheckCategories(recheck) {
+  if (Array.isArray(recheck.categories)) return recheck.categories
+  return recheck.category ? [recheck.category] : []
+}
+
+export const formatRecheckCategories = (recheck) =>
+  getRecheckCategories(recheck).map(getCategoryLabel).join(', ')
+
 export const RECHECK_STATUS = {
   open: { label: 'Open', color: 'warning' },
   resolved: { label: 'Resolved', color: 'success' },

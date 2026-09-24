@@ -1,218 +1,169 @@
-// Fake records only (no real PII). Shape mirrors the planned GET /sales-audit/leads response,
-// i.e. Zoho fields already mapped to camelCase by the backend.
-//
-// Backend contract for the Leads page, on top of the enrolment fields below:
-//   sapEnteredAt  int64 Unix seconds when the lead entered Sales Action Pending
-//   credits       { bookingAmount, part1, remainingBalance }, each null when unpaid, else
-//                 { amount, verified, paymentDate } from the latest financial record of type
-//                 Credit_Booking_Amount / Credit_Part1 / Credit_RemainingBalance
-//   escalation    null, or the last mail sent to the BDA and Accounts:
-//                 { to: [email], subject, trigger: "auto" | "manual", sentAt: Unix seconds }
-//   ccResponse    same as in GET /sales-audit/leads/summaries (see mocks/rechecks.js)
-// The mock derives `credits` from MOCK_PAYMENTS, `escalation` from mailSimulator and
-// `ccResponse` from MOCK_CC_RESPONSES. `ccUploadedAt` is mock-only history.
-const hoursAgo = (hours) => Math.floor(Date.now() / 1000) - hours * 60 * 60
+import ZOHO_LEADS from './zohoLeads.json'
+import { fromZohoLead, parseZohoDate, toPayments } from '../../utils/zohoLead'
 
-export const MOCK_STUDENTS = [
-  {
-    id: 'stu-1001',
-    sapEnteredAt: hoursAgo(60),
-    ccUploadedAt: hoursAgo(40),
-    studentFullName: 'Aarav Test',
-    email: 'aarav.test@example.com',
-    primaryPhone: '+910000000001',
-    course: 'Zen Student Program - Full Stack Development',
-    courseValue: '78800',
-    discountGiven: '5000',
-    paymentType: 'Direct - Full Payment',
-    partialSplitUpCategory: '',
-    totalPaid: '73800.00',
-    balanceAmount: '0.00',
-    saleOwner: 'Sales Owner One - owner1@example.com',
-    saleOwnerManager: 'Sales Manager A - managera@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Credit_Part1'],
-    confirmationCallLink: 'https://drive.google.com/file/d/mock-cc-1001/view',
-  },
-  {
-    id: 'stu-1002',
-    sapEnteredAt: hoursAgo(30),
-    ccUploadedAt: hoursAgo(4),
-    studentFullName: 'Diya Sample',
-    email: 'diya.sample@example.com',
-    primaryPhone: '+910000000002',
-    course: 'Zen UI/UX Program',
-    courseValue: '75000',
-    discountGiven: '',
-    paymentType: 'Direct - Partial Payment',
-    partialSplitUpCategory: '40-30-30',
-    totalPaid: '30999.00',
-    balanceAmount: '44001.00',
-    saleOwner: 'Sales Owner Two - owner2@example.com',
-    saleOwnerManager: 'Sales Manager A - managera@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Credit_Part1'],
-    confirmationCallLink: 'https://drive.google.com/file/d/mock-cc-1002/view',
-  },
-  {
-    id: 'stu-1003',
-    sapEnteredAt: hoursAgo(20),
-    ccUploadedAt: hoursAgo(14),
-    studentFullName: 'Kabir Demo',
-    email: 'kabir.demo@example.com',
-    primaryPhone: '+910000000003',
-    course: 'Zen Student Program - Full Stack Development',
-    courseValue: '78800',
-    discountGiven: '',
-    paymentType: 'Subscription',
-    partialSplitUpCategory: '25-25-25-25',
-    totalPaid: '21267.00',
-    balanceAmount: '57533.00',
-    saleOwner: 'Sales Owner One - owner1@example.com',
-    saleOwnerManager: 'Sales Manager B - managerb@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Subscription 1'],
-    confirmationCallLink: 'https://drive.google.com/file/d/mock-cc-1003/view',
-  },
-  {
-    id: 'stu-1004',
-    sapEnteredAt: hoursAgo(72),
-    ccUploadedAt: null,
-    studentFullName: 'Meera Placeholder',
-    email: 'meera.placeholder@example.com',
-    primaryPhone: '+910000000004',
-    course: 'Zen Data Science Program',
-    courseValue: '85999',
-    discountGiven: '2000',
-    paymentType: 'EMI - 3 Month',
-    partialSplitUpCategory: '',
-    totalPaid: '28000.00',
-    balanceAmount: '55999.00',
-    saleOwner: 'Sales Owner Three - owner3@example.com',
-    saleOwnerManager: 'Sales Manager B - managerb@example.com',
-    emiStatus: 'Approved',
-    emiDetails: { loanAmount: '₹55999', monthlyEmi: '₹18667', roi: '0%', dueDate: '5th October' },
-    financialDetailsTypes: ['Credit_EMI'],
-    confirmationCallLink: '',
-  },
-  {
-    id: 'stu-1005',
-    sapEnteredAt: hoursAgo(8),
-    ccUploadedAt: hoursAgo(3),
-    studentFullName: 'Rohan Mock',
-    email: 'rohan.mock@example.com',
-    primaryPhone: '+910000000005',
-    course: 'Zen Student Program',
-    courseValue: '78800',
-    discountGiven: '',
-    paymentType: 'EMI - 12 Month',
-    partialSplitUpCategory: '',
-    totalPaid: '78800.00',
-    balanceAmount: '0.00',
-    saleOwner: 'Sales Owner Two - owner2@example.com',
-    saleOwnerManager: 'Sales Manager A - managera@example.com',
-    emiStatus: 'Approved',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Credit_EMI'],
-    confirmationCallLink: 'https://drive.google.com/file/d/mock-cc-1005/view',
-  },
-  {
-    id: 'stu-1006',
-    sapEnteredAt: hoursAgo(6),
-    ccUploadedAt: hoursAgo(3),
-    studentFullName: 'Sana Example',
-    email: 'sana.example@example.com',
-    primaryPhone: '+910000000006',
-    course: 'Zen Data Science Program',
-    courseValue: '85999',
-    discountGiven: '',
-    paymentType: 'EMI + Partial Payment',
-    partialSplitUpCategory: '50-50',
-    totalPaid: '67499.00',
-    balanceAmount: '18500.00',
-    saleOwner: 'Sales Owner Three - owner3@example.com',
-    saleOwnerManager: 'Sales Manager B - managerb@example.com',
-    emiStatus: 'Approved',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Credit_EMI', 'Credit_Part1'],
-    confirmationCallLink: 'https://drive.google.com/file/d/mock-cc-1006/view',
-  },
-  {
-    id: 'stu-1007',
-    sapEnteredAt: hoursAgo(40),
-    ccUploadedAt: null,
-    studentFullName: 'Ishaan Fixture',
-    email: 'ishaan.fixture@example.com',
-    primaryPhone: '+910000000007',
-    course: 'Zen_UI_UX_Program',
-    courseValue: '75000',
-    discountGiven: '',
-    paymentType: 'Direct - Partial Payment',
-    partialSplitUpCategory: '20-30-30-20',
-    totalPaid: '26000.00',
-    balanceAmount: '49000.00',
-    saleOwner: 'Sales Owner One - owner1@example.com',
-    saleOwnerManager: 'Sales Manager A - managera@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Credit_Part1'],
-    confirmationCallLink: '',
-  },
-  {
-    id: 'stu-1008',
-    sapEnteredAt: hoursAgo(26),
-    ccUploadedAt: null,
-    studentFullName: 'Nila Stub',
-    email: 'nila.stub@example.com',
-    primaryPhone: '+910000000008',
-    course: 'Zen Student Program - Full Stack Development with Career Guidance',
-    courseValue: '9000',
-    discountGiven: '',
-    paymentType: 'Subscription',
-    partialSplitUpCategory: '',
-    totalPaid: '0.00',
-    balanceAmount: '9000.00',
-    saleOwner: 'Sales Owner Two - owner2@example.com',
-    saleOwnerManager: 'Sales Manager B - managerb@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: ['Credit_Booking_Amount'],
-    confirmationCallLink: '',
-  },
-  {
-    id: 'stu-1009',
-    sapEnteredAt: hoursAgo(50),
-    ccUploadedAt: null,
-    studentFullName: 'Varun Dummy',
-    email: 'varun.dummy@example.com',
-    primaryPhone: '+910000000009',
-    course: 'Zen Student Program - Data Science',
-    courseValue: '73800',
-    discountGiven: '',
-    paymentType: 'Subscription',
-    partialSplitUpCategory: '40-40-20',
-    totalPaid: '0.00',
-    balanceAmount: '73800.00',
-    saleOwner: 'Sales Owner Three - owner3@example.com',
-    saleOwnerManager: 'Sales Manager A - managera@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: [],
-    confirmationCallLink: '',
-  },
-  {
-    id: 'stu-1010',
-    sapEnteredAt: hoursAgo(300),
-    ccUploadedAt: null,
-    studentFullName: 'Tara Sample',
-    email: 'tara.sample@example.com',
-    primaryPhone: '+910000000010',
-    course: 'IITM Pravartak- FSD',
-    courseValue: '85825',
-    discountGiven: '',
-    paymentType: 'Direct - Partial Payment',
-    partialSplitUpCategory: '',
-    totalPaid: '85825.00',
-    balanceAmount: '0.00',
-    saleOwner: 'Sales Owner One - owner1@example.com',
-    saleOwnerManager: 'Sales Manager B - managerb@example.com',
-    emiStatus: 'Not Applied',
-    financialDetailsTypes: ['Credit_Booking_Amount', 'Credit_Part1', 'Credit_RemainingBalance'],
-    confirmationCallLink: '',
-  },
-]
+// Mock leads: zohoLeads.json is a real Zoho export anonymized by scripts/anonymizeZohoSample.mjs
+// (fake names, contacts, ids and links; structure, cases, amounts and statuses kept). It covers
+// every payment type Zoho sends: Direct - Full / Partial Payment, Intra Month Partial,
+// EMI - 6 / 12 / 18 / 24 Month and a lead with no payment type, with converted / not converted /
+// dropped statuses, Active / Inactive / Paid partial reminders and Disbursed / Rejected EMIs.
+//
+// The export is from early 2026, so every date is shifted by the same number of days to end
+// yesterday: trends, "time in SAP" and due dates then look current. Relative spacing is kept.
+//
+// Fields the export doesn't carry yet, filled in here:
+//   auditCoordinator  the auditor the lead is assigned to (mock: auditor1-3@example.com in turn,
+//                     every eighth lead unassigned); kept as-is when the export has it
+//   zenId, onboardCoordinator
+//   CourseDiscountDetails  discount requests on partial plans paid in the same month (two
+//                     Approved, one Requested)
+//   recheckDetails    rechecks raised in Zoho (open "Confirmation Call" tickets on converted
+//                     leads without a CC, one multi-category ticket, one closed)
+//   ccUploadedAt      Unix seconds, added by the backend (mock: a few hours after enrollment
+//                     when there is a CC)
+// `escalation` comes from mailSimulator and `ccResponse` from MOCK_CC_RESPONSES.
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const HOUR = 60 * 60
+const MOCK_AUDITORS = ['auditor1@example.com', 'auditor2@example.com', 'auditor3@example.com']
+const mockCoordinator = (index) => (index % 8 === 7 ? null : MOCK_AUDITORS[index % MOCK_AUDITORS.length])
+const MOCK_ONBOARDERS = ['onboard1@example.com', 'onboard2@example.com']
+
+const toDay = (value) => value.slice(0, 10)
+const latestPaymentDate = ZOHO_LEADS.flatMap((lead) => lead.financialDetails)
+  .map((record) => record.paymentDate)
+  .filter(Boolean)
+  .sort()
+  .at(-1)
+const shiftDays = Math.round(
+  (Date.now() - DAY_MS - Date.parse(`${toDay(latestPaymentDate)}T00:00:00Z`)) / DAY_MS,
+)
+
+// "2026-01-01" / "2026-02-01 10:00:02.0" moved by shiftDays; anything else unchanged.
+function shift(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(value)) return value
+  const day = new Date(Date.parse(`${toDay(value)}T00:00:00Z`) + shiftDays * DAY_MS)
+  return day.toISOString().slice(0, 10) + value.slice(10)
+}
+
+function shiftLead(lead, index) {
+  const shifted = {
+    ...lead,
+    auditCoordinator: lead.auditCoordinator ?? mockCoordinator(index),
+    dateOfEnrollment: shift(lead.dateOfEnrollment),
+    financialDetails: lead.financialDetails.map((record) => ({
+      ...record,
+      paymentDate: shift(record.paymentDate),
+      verifiedDate: shift(record.verifiedDate),
+    })),
+    partialReminders: lead.partialReminders.map((reminder) => ({
+      ...reminder,
+      dueDate: shift(reminder.dueDate),
+      linkCreatedDateTime: shift(reminder.linkCreatedDateTime),
+      paidDateTime: shift(reminder.paidDateTime),
+    })),
+    EMIdetails: lead.EMIdetails.map((emi) => ({ ...emi, applicationDate: shift(emi.applicationDate) })),
+  }
+  const enrolledAt = parseZohoDate(shifted.dateOfEnrollment)
+  if (shifted.confirmationCall && enrolledAt) {
+    shifted.ccUploadedAt = enrolledAt + (6 + (index % 5) * 9) * HOUR
+  }
+  return shifted
+}
+
+// Discount requests: partial plans with willLeadPayinSameMonth "Yes" (as Zoho sends them).
+function withDiscountRequests(leads) {
+  let count = 0
+  return leads.map((lead) => {
+    if (lead.CourseDiscountDetails || !/Partial/.test(lead.paymenttype ?? '')) return lead
+    if (lead.willLeadPayinSameMonth !== 'Yes' || !lead.courseFee) return lead
+    count += 1
+    const discountValue = Math.round(lead.courseFee * 0.1)
+    return {
+      ...lead,
+      CourseDiscountDetails: [
+        {
+          requestedCourseFee: lead.courseFee,
+          requestedperson: `approver${count}@example.com`,
+          actualCourseFee: lead.courseFee + discountValue,
+          course: lead.product,
+          discountValue,
+          paymentType: lead.paymenttype,
+          status: count % 3 === 0 ? 'Requested' : 'Approved',
+        },
+      ],
+    }
+  })
+}
+
+// Zoho-side rechecks (recheckDetails), in the shape Zoho sends them.
+function zohoRecheck(lead, number, pendingList, comments, ticketStatus = 'Open', attempt = 1) {
+  const day = lead.dateOfEnrollment ?? ''
+  return {
+    auditComments: comments,
+    newccLink: '',
+    requestPerson: lead.auditCoordinator ?? MOCK_AUDITORS[0],
+    ticketStatus,
+    recheckattempt: attempt,
+    recheckDate: day ? `${day} 15:51:26.0` : '',
+    SRID: `SR-0${4150 + number}`,
+    pendingList,
+  }
+}
+
+function withZohoRechecks(leads) {
+  const needsCc = leads.filter(
+    (lead) => lead.status === 'converted' && !lead.confirmationCall && lead.paymenttype,
+  )
+  const withCc = leads.filter((lead) => lead.confirmationCall && lead.paymenttype)
+  const planned = new Map()
+  const add = (lead, recheck) => {
+    if (lead) planned.set(lead.superleapId, [...(planned.get(lead.superleapId) ?? []), recheck])
+  }
+  needsCc.slice(0, 2).forEach((lead, index) =>
+    add(
+      lead,
+      zohoRecheck(
+        lead,
+        index + 1,
+        ['Confirmation Call'],
+        'Verification mail link is missing in Zoho. Please verify and include the CC link.',
+      ),
+    ),
+  )
+  add(
+    withCc[0],
+    withCc[0] &&
+      zohoRecheck(
+        withCc[0],
+        3,
+        ['Payment', 'Discount Approval'],
+        'Discount on the payment plan does not match the approved request; confirm with the learner.',
+        'Open',
+        2,
+      ),
+  )
+  add(
+    withCc[1],
+    withCc[1] &&
+      zohoRecheck(withCc[1], 4, ['EMI'], 'EMI tenure in the CC differs from the loan record.', 'Closed'),
+  )
+  return leads.map((lead) =>
+    planned.has(lead.superleapId) && !lead.recheckDetails
+      ? { ...lead, recheckDetails: planned.get(lead.superleapId) }
+      : lead,
+  )
+}
+
+export const MOCK_ZOHO_LEADS = withZohoRechecks(
+  withDiscountRequests(
+    ZOHO_LEADS.map(shiftLead).map((lead, index) => ({
+      ...lead,
+      zenId: lead.zenId ?? String(76000 + index),
+      onboardCoordinator: lead.onboardCoordinator ?? MOCK_ONBOARDERS[index % MOCK_ONBOARDERS.length],
+    })),
+  ),
+)
+
+// The leads and payments as the pages use them (through the same adapter as the real API).
+export const MOCK_STUDENTS = MOCK_ZOHO_LEADS.map(fromZohoLead)
+export const MOCK_PAYMENTS = MOCK_ZOHO_LEADS.flatMap(toPayments)

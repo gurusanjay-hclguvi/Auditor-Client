@@ -28,7 +28,7 @@ import {
   updateCcResponse,
 } from '../apiCalls/salesAuditApi'
 import { useApi } from '../utils/useApi'
-import { RECHECK_CATEGORIES, getCcStatus } from '../utils/recheckStatus'
+import { RECHECK_CATEGORIES, getCcStatus, getRecheckCategories } from '../utils/recheckStatus'
 import { contactName } from '../utils/formatters'
 
 const TABS = {
@@ -72,7 +72,8 @@ function Rechecks() {
   }, [rechecks, leads])
 
   const statusRows = rows.filter((row) => statusFilter === 'all' || row.status === statusFilter)
-  const visibleRows = statusRows.filter((row) => category === 'all' || row.category === category)
+  const hasCategory = (row, key) => getRecheckCategories(row).includes(key)
+  const visibleRows = statusRows.filter((row) => category === 'all' || hasCategory(row, category))
   const pendingCcCount = leads.filter((lead) => getCcStatus(lead) === 'pending').length
 
   async function handleRaise(recheck) {
@@ -165,7 +166,7 @@ function Rechecks() {
                 {Object.entries(RECHECK_CATEGORIES).map(([key, { label }]) => (
                   <Chip
                     key={key}
-                    label={`${label} (${statusRows.filter((row) => row.category === key).length})`}
+                    label={`${label} (${statusRows.filter((row) => hasCategory(row, key)).length})`}
                     color={category === key ? 'primary' : 'default'}
                     variant={category === key ? 'filled' : 'outlined'}
                     onClick={() => setCategory(key)}

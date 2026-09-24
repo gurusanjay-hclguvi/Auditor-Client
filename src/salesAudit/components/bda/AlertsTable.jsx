@@ -4,6 +4,7 @@ import DataTable from '../common/DataTable'
 import MailAlertStatus from '../common/MailAlertStatus'
 import { ALERT_SOURCES } from '../../utils/bdaMetrics'
 import { paths } from '../../utils/routePaths'
+import { contactName } from '../../utils/formatters'
 
 // Who raised it: the auditor, the scheduler, or someone pressing "send now".
 function getRaisedBy(alert) {
@@ -50,8 +51,12 @@ const COLUMNS = [
   },
 ]
 
-function AlertsTable({ alerts }) {
-  return <DataTable columns={COLUMNS} rows={alerts} />
+const BDA_COLUMN = { label: 'BDA', render: (alert) => contactName(alert.lead.saleOwner) }
+
+// `showBda` adds the owner column for a BDM's team view.
+function AlertsTable({ alerts, showBda = false }) {
+  const columns = showBda ? [...COLUMNS.slice(0, 3), BDA_COLUMN, ...COLUMNS.slice(3)] : COLUMNS
+  return <DataTable columns={columns} rows={alerts} />
 }
 
 export default AlertsTable

@@ -7,9 +7,10 @@ import {
   isSapOverdue,
   needsEscalation,
 } from './leadStatus'
-import { RECHECK_CATEGORIES, getCcStatus } from './recheckStatus'
+import { formatRecheckCategories, getCcStatus, getRecheckCategories } from './recheckStatus'
 import { formatCurrency, formatDuration } from './formatters'
 import { paths } from './routePaths'
+import { getPaymentTypeLabel } from './paymentCategories'
 
 // Action items and alerts for one BDA (a lead's saleOwner), computed from the Leads response
 // (with credits, escalation, ccResponse) and the rechecks list.
@@ -27,6 +28,27 @@ export function getBdaOptions(leads) {
 
 export function isOwnedBy(lead, bdaEmail) {
   return getContactEmail(lead.saleOwner) === bdaEmail
+}
+
+// A BDM's team is every lead whose BDM (saleOwnerManager) they are.
+export function isManagedBy(lead, bdmEmail) {
+  return getContactEmail(lead.saleOwnerManager) === bdmEmail
+}
+
+// One row per BDA in a BDM's team, for the Home view.
+export function getTeamSummary(bdaOptions, leads, rechecks, nowMs) {
+  return bdaOptions.map((bda) => {
+    const bdaLeads = leads.filter((lead) => isOwnedBy(lead, bda.email))
+    const items = buildActionItems(bdaLeads, rechecks, nowMs)
+    return {
+      ...bda,
+      leads: bdaLeads.length,
+      todo: items.length,
+      urgent: items.filter((item) => item.priority <= 2).length,
+      openRechecks: items.filter((item) => item.type === 'recheck').length,
+      pendingCc: bdaLeads.filter((lead) => getCcStatus(lead) === 'pending').length,
+    }
+  })
 }
 
 // A pending CC still needs the BDA unless they've reported the mail as sent.
@@ -65,26 +87,26 @@ function paymentItems(lead, nowMs) {
   if (!needsEscalation(lead)) return []
   const overdue = isSapOverdue(lead, nowMs)
   const age = formatDuration(getSapAgeMs(lead, nowMs))
-  return Object.keys(CREDIT_TYPES)
-    .filter((key) => ['unverified', 'mismatch'].includes(getCreditStatus(lead.credits?.[key])))
-    .map((key) => {
-      const credit = lead.credits[key]
-      const status = getCreditStatus(credit) === 'mismatch' ? 'mismatch' : 'not verified'
+  // Every payment record that isn't verified "Yes" keeps the lead in Sales Action Pending.
+  return (lead.unverifiedPayments ?? [])
+    .map((record, index) => {
+      const key = Object.keys(CREDIT_TYPES).find((creditKey) => CREDIT_TYPES[creditKey] === record.type)
+      const status = getCreditStatus(record) === 'mismatch' ? 'mismatch' : 'not verified'
       return {
-        id: `payment-${lead.id}-${key}`,
+        id: `payment-${lead.id}-${index}`,
         type: 'payment',
         priority: overdue ? 1 : 4,
         lead,
         ageMs: getSapAgeMs(lead, nowMs),
-        title: `${CREDIT_LABELS[key]} ${status}`,
-        why: `${formatCurrency(credit.amount)} · ${age} in SAP · ${
+        title: `${CREDIT_LABELS[key] ?? getPaymentTypeLabel(record.type)} ${status}`,
+        why: `${formatCurrency(record.amount)} · ${age} in SAP · ${
           overdue
             ? 'Accounts already mailed'
             : `auto-mail to Accounts in ${formatDuration(getMsUntilEscalation(lead, nowMs))}`
         }`,
         action: {
           label: 'View payments',
-          to: paths.studentPayments(lead.id, CREDIT_CATEGORY[key]),
+          to: paths.studentPayments(lead.id, CREDIT_CATEGORY[key] ?? 'all'),
         },
       }
     })
@@ -95,14 +117,16 @@ function recheckItems(lead, rechecks, nowMs) {
     .filter((recheck) => recheck.leadId === lead.id && recheck.status === 'open')
     .map((recheck) => {
       const ageMs = Math.max(0, nowMs - recheck.raisedAt * 1000)
-      const ccRelated = ['ccPending', 'missedPointsInCc'].includes(recheck.category)
+      const ccRelated = getRecheckCategories(recheck).some((category) =>
+        ['ccPending', 'missedPointsInCc'].includes(category),
+      )
       return {
         id: `recheck-${recheck.id}`,
         type: 'recheck',
         priority: 2,
         lead,
         ageMs,
-        title: `${RECHECK_CATEGORIES[recheck.category]?.label ?? recheck.category} recheck`,
+        title: `${formatRecheckCategories(recheck)} recheck`,
         why: `${recheck.notes} · raised ${formatDuration(ageMs)} ago`,
         action: {
           label: ccRelated && lead.confirmationCallLink ? 'Open CC' : 'View lead',
@@ -174,7 +198,6 @@ export const ALERT_SOURCES = {
   recheckReminder: { label: 'Recheck overdue', group: 'automated' },
 }
 
-const categoryLabel = (category) => RECHECK_CATEGORIES[category]?.label ?? category
 
 // Every alert mailed to this BDA's leads, newest first. `actionNeeded` stays true until the
 // underlying issue is cleared (recheck resolved, payment verified, CC uploaded).
@@ -188,7 +211,7 @@ export function buildAlertFeed(leads, rechecks) {
       source: 'recheck',
       lead: leadsById[recheck.leadId],
       mail: recheck.alert,
-      detail: `${categoryLabel(recheck.category)}: ${recheck.notes}`,
+      detail: `${formatRecheckCategories(recheck)}: ${recheck.notes}`,
       actionNeeded: recheck.status === 'open',
     }))
 
@@ -199,7 +222,7 @@ export function buildAlertFeed(leads, rechecks) {
       source: 'recheckReminder',
       lead: leadsById[recheck.leadId],
       mail: recheck.lastReminder,
-      detail: `${categoryLabel(recheck.category)} recheck still open after 24h: ${recheck.notes}`,
+      detail: `${formatRecheckCategories(recheck)} recheck still open after 24h: ${recheck.notes}`,
       actionNeeded: recheck.status === 'open',
     }))
 

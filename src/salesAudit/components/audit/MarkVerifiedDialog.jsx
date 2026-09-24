@@ -10,7 +10,7 @@ import {
   Typography,
 } from '@mui/material'
 
-// Confirms "Mark verified → Awaiting". When checks are failing, a reason is required.
+// Confirms "Mark audited" (Awaiting → Audited). When checks are failing, a reason is required.
 function MarkVerifiedDialog({ leadName, failingItems, onClose, onConfirm }) {
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -30,10 +30,10 @@ function MarkVerifiedDialog({ leadName, failingItems, onClose, onConfirm }) {
 
   return (
     <Dialog open onClose={submitting ? undefined : onClose} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ fontWeight: 700 }}>Mark {leadName} as verified?</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700 }}>Mark {leadName} as audited?</DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ mb: 2 }}>
-          The lead moves from Sales Action Pending to Awaiting.
+          The lead moves from Awaiting Audit to Audited.
         </Typography>
         {needsReason && (
           <>
@@ -42,7 +42,7 @@ function MarkVerifiedDialog({ leadName, failingItems, onClose, onConfirm }) {
               failing: {failingItems.map((item) => item.label).join(', ')}.
             </Alert>
             <TextField
-              label="Reason for verifying anyway"
+              label="Reason for auditing anyway"
               required
               fullWidth
               multiline
@@ -68,7 +68,7 @@ function MarkVerifiedDialog({ leadName, failingItems, onClose, onConfirm }) {
           onClick={handleConfirm}
           disabled={submitting || (needsReason && !reason.trim())}
         >
-          {submitting ? 'Saving…' : needsReason ? 'Verify anyway' : 'Verify → Awaiting'}
+          {submitting ? 'Saving…' : needsReason ? 'Audit anyway' : 'Mark audited'}
         </Button>
       </DialogActions>
     </Dialog>

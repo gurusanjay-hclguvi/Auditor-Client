@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import {
   Alert,
   Box,
-  Button,
   Chip,
   Grid,
   MenuItem,
@@ -15,13 +14,14 @@ import {
   Typography,
 } from '@mui/material'
 import { useSelector } from 'react-redux'
-import { Link as RouterLink, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import TrendDelta from '../components/common/TrendDelta'
 import ActionTile from '../components/bda/ActionTile'
 import ActionList from '../components/bda/ActionList'
 import AlertsTable from '../components/bda/AlertsTable'
+import TeamSummary from '../components/bda/TeamSummary'
 import PatternList from '../components/overview/PatternList'
 import CcStatusTable from '../components/rechecks/CcStatusTable'
 import CcPendingDialog from '../components/rechecks/CcPendingDialog'
@@ -33,7 +33,9 @@ import {
   buildActionItems,
   buildAlertFeed,
   getBdaOptions,
+  getTeamSummary,
   isCcActionNeeded,
+  isManagedBy,
   isOwnedBy,
 } from '../utils/bdaMetrics'
 import {
@@ -46,9 +48,11 @@ import {
 } from '../utils/auditHistory'
 import { getCcStatus } from '../utils/recheckStatus'
 import { formatCurrency, formatDuration } from '../utils/formatters'
-import { paths } from '../utils/routePaths'
+import { ROLES, useCurrentUser } from '../utils/roles'
 
 const TABS = { todo: 'To do', cc: 'CC Updates', alerts: 'Alerts' }
+// A BDM's "Viewing as" value for all their BDAs together.
+const HOME = 'home'
 const INSIGHT_DAYS = 30
 
 const ALERT_FILTERS = {
@@ -68,7 +72,7 @@ const ALERT_FILTERS = {
 const fetchBdaView = (token) => Promise.all([getLeads(token), getAuditHistory(token)])
 const EMPTY_DATA = [{ leads: [] }, { rechecks: [], payments: [], alerts: [] }]
 
-function TodoTab({ items, leads, scopedHistory, now, onUpdateCc }) {
+function TodoTab({ items, leads, scopedHistory, now, onUpdateCc, showBda }) {
   const [typeFilter, setTypeFilter] = useState(null)
 
   const insights = useMemo(() => {
@@ -136,7 +140,8 @@ function TodoTab({ items, leads, scopedHistory, now, onUpdateCc }) {
       <Box>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            {typeFilter ? ACTION_TYPES[typeFilter] : 'Your to-do list'} ({visibleItems.length})
+            {typeFilter ? ACTION_TYPES[typeFilter] : showBda ? 'Team to-do list' : 'Your to-do list'} (
+            {visibleItems.length})
           </Typography>
           {typeFilter && (
             <Chip
@@ -148,7 +153,7 @@ function TodoTab({ items, leads, scopedHistory, now, onUpdateCc }) {
           )}
         </Stack>
         <PageState empty={visibleItems.length === 0} emptyMessage="You're all caught up.">
-          <ActionList items={visibleItems} onUpdateCc={onUpdateCc} />
+          <ActionList items={visibleItems} onUpdateCc={onUpdateCc} showBda={showBda} />
         </PageState>
       </Box>
 
@@ -180,7 +185,7 @@ function TodoTab({ items, leads, scopedHistory, now, onUpdateCc }) {
           )}
           <PatternList
             patterns={insights.patterns}
-            showBdaLink={false}
+            showRechecksLink={false}
             emptyMessage="No repeat issues on your leads. Keep it up."
           />
         </Paper>
@@ -207,12 +212,36 @@ function BdaView() {
   const [pendingLead, setPendingLead] = useState(null)
   const [toast, setToast] = useState(null)
 
-  const bdaOptions = useMemo(() => getBdaOptions(allLeads), [allLeads])
-  const selectedBda =
-    bdaOptions.find((option) => option.email === searchParams.get('bda')) ?? bdaOptions[0]
+  // A BDA sees their own leads. A BDM sees their team's leads: all of them on Home, or one BDA's.
+  const user = useCurrentUser()
+  const isBdm = user.role === ROLES.bdm
+  const teamLeads = useMemo(
+    () =>
+      allLeads.filter((lead) =>
+        isBdm ? isManagedBy(lead, user.email) : isOwnedBy(lead, user.email),
+      ),
+    [allLeads, isBdm, user.email],
+  )
+  const bdaOptions = useMemo(() => (isBdm ? getBdaOptions(teamLeads) : []), [isBdm, teamLeads])
+  const bdaParam = searchParams.get('bda')
+  const selectedBda = useMemo(
+    () =>
+      isBdm
+        ? (bdaOptions.find((option) => option.email === bdaParam) ?? null)
+        : { email: user.email, name: user.name },
+    [isBdm, bdaOptions, bdaParam, user.email, user.name],
+  )
+  const isHome = isBdm && !selectedBda
+
+  const teamSummary = useMemo(
+    () => (isHome ? getTeamSummary(bdaOptions, teamLeads, rechecks, now) : []),
+    [isHome, bdaOptions, teamLeads, rechecks, now],
+  )
 
   const view = useMemo(() => {
-    const leads = selectedBda ? allLeads.filter((lead) => isOwnedBy(lead, selectedBda.email)) : []
+    const leads = selectedBda
+      ? teamLeads.filter((lead) => isOwnedBy(lead, selectedBda.email))
+      : teamLeads
     return {
       leads,
       scopedHistory: scopeHistory(history, leads),
@@ -222,11 +251,12 @@ function BdaView() {
         (a, b) => Number(isCcActionNeeded(b)) - Number(isCcActionNeeded(a)),
       ),
     }
-  }, [allLeads, history, rechecks, selectedBda, now])
+  }, [teamLeads, history, rechecks, selectedBda, now])
 
   const setParam = (key, value) => {
     const next = new URLSearchParams(searchParams)
-    next.set(key, value)
+    if (value == null) next.delete(key)
+    else next.set(key, value)
     setSearchParams(next)
   }
 
@@ -251,18 +281,27 @@ function BdaView() {
   return (
     <Box>
       <PageHeader
-        title={selectedBda ? `BDA View · ${selectedBda.name}` : 'BDA View'}
-        subtitle="What to do next on your leads, your CCs, and the alerts raised on them"
+        title={isHome ? `BDA View · ${user.name}'s team` : `BDA View · ${selectedBda.name}`}
+        subtitle={
+          isHome
+            ? 'All the BDAs under you: what to do next, their CCs, and the alerts raised on them'
+            : isBdm
+              ? `${selectedBda.name}'s leads, CCs, and the alerts raised on them`
+              : 'What to do next on your leads, your CCs, and the alerts raised on them'
+        }
         action={
-          bdaOptions.length > 0 && (
+          isBdm && (
             <TextField
               select
               size="small"
               label="Viewing as"
-              value={selectedBda?.email ?? ''}
-              onChange={(event) => setParam('bda', event.target.value)}
-              sx={{ minWidth: 220 }}
+              value={selectedBda?.email ?? HOME}
+              onChange={(event) =>
+                setParam('bda', event.target.value === HOME ? null : event.target.value)
+              }
+              sx={{ minWidth: 240 }}
             >
+              <MenuItem value={HOME}>Home · all my BDAs</MenuItem>
               {bdaOptions.map((option) => (
                 <MenuItem key={option.email} value={option.email}>
                   {option.name}
@@ -277,9 +316,15 @@ function BdaView() {
         loading={loading}
         error={error}
         onRetry={reload}
-        empty={!selectedBda}
-        emptyMessage="No BDAs found in the lead data."
+        empty={teamLeads.length === 0}
+        emptyMessage={isBdm ? 'No leads for BDAs under you yet.' : 'You have no leads yet.'}
       >
+        {isHome && (
+          <Box sx={{ mb: 3 }}>
+            <TeamSummary rows={teamSummary} onSelect={(email) => setParam('bda', email)} />
+          </Box>
+        )}
+
         <Tabs
           value={tab}
           onChange={(_, next) => setParam('tab', next)}
@@ -295,13 +340,14 @@ function BdaView() {
         </Tabs>
 
         {tab === 'todo' && (
-          <PageState empty={view.leads.length === 0} emptyMessage="This BDA has no leads yet.">
+          <PageState empty={view.leads.length === 0} emptyMessage={isHome ? 'No leads yet.' : 'This BDA has no leads yet.'}>
             <TodoTab
               items={actionItems}
               leads={view.leads}
               scopedHistory={view.scopedHistory}
               now={now}
               onUpdateCc={setPendingLead}
+              showBda={isHome}
             />
           </PageState>
         )}
@@ -335,16 +381,12 @@ function BdaView() {
                   onClick={() => setAlertFilter(key)}
                 />
               ))}
-              <Box sx={{ flex: 1 }} />
-              <Button component={RouterLink} to={paths.rechecks()} size="small">
-                All rechecks
-              </Button>
             </Stack>
             <PageState
               empty={visibleAlerts.length === 0}
               emptyMessage="No alerts match this filter."
             >
-              <AlertsTable alerts={visibleAlerts} />
+              <AlertsTable alerts={visibleAlerts} showBda={isHome} />
             </PageState>
           </>
         )}

@@ -12,26 +12,21 @@ const KIND_LABELS = {
   slowResolution: 'Slow turnaround',
 }
 
-function patternLinks(pattern, showBdaLink) {
+// The Rechecks page is the auditor's, so the BDA View hides that link.
+function patternLinks(pattern, showRechecksLink) {
   const links = []
   if (pattern.leadId) links.push({ label: 'View lead', to: paths.student(pattern.leadId) })
-  if (pattern.category) {
+  if (showRechecksLink && pattern.category) {
     links.push({
       label: `View ${RECHECK_CATEGORIES[pattern.category].label} rechecks`,
       to: `${paths.rechecks()}?status=all&category=${pattern.category}`,
-    })
-  }
-  if (showBdaLink && pattern.bda) {
-    links.push({
-      label: 'Open BDA view',
-      to: `${paths.bda}?bda=${encodeURIComponent(pattern.bda.email)}`,
     })
   }
   return links
 }
 
 // Findings from findRepeatPatterns, each with its evidence and a suggested follow-up.
-function PatternList({ patterns, showBdaLink = true, emptyMessage }) {
+function PatternList({ patterns, showRechecksLink = true, emptyMessage }) {
   if (patterns.length === 0) {
     return (
       <Typography variant="body2" sx={{ color: MUTED_TEXT }}>
@@ -67,7 +62,7 @@ function PatternList({ patterns, showBdaLink = true, emptyMessage }) {
               </Stack>
             </Box>
             <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.5} alignItems="flex-start">
-              {patternLinks(pattern, showBdaLink).map((link) => (
+              {patternLinks(pattern, showRechecksLink).map((link) => (
                 <Button
                   key={link.to}
                   component={RouterLink}

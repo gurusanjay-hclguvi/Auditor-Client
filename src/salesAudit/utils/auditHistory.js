@@ -1,6 +1,11 @@
 import { getContactName } from './contacts'
 import { isSapOverdue, needsEscalation } from './leadStatus'
-import { RECHECK_CATEGORIES, getCcStatus } from './recheckStatus'
+import {
+  RECHECK_CATEGORIES,
+  formatRecheckCategories,
+  getCcStatus,
+  getRecheckCategories,
+} from './recheckStatus'
 import { getBdaOptions, isCcActionNeeded, isOwnedBy } from './bdaMetrics'
 
 // Historical views for the Audit Overview and BDA pages: trend vs the previous period, response
@@ -127,7 +132,7 @@ const RESPONSE_METRICS = [
         .map((recheck) => ({
           id: recheck.id,
           lead: leadsById[recheck.leadId],
-          label: `${RECHECK_CATEGORIES[recheck.category]?.label ?? recheck.category} recheck`,
+          label: `${formatRecheckCategories(recheck)} recheck`,
           ageS: now - recheck.raisedAt,
         })),
   },
@@ -232,10 +237,14 @@ export function findRepeatPatterns(history, leads, periods) {
       leads.find((lead) => isOwnedBy(lead, bda.email))?.saleOwnerManager,
     )
 
-    Object.entries(groupBy(own, (recheck) => recheck.category)).forEach(([category, items]) => {
+    // A recheck counts once for each of its categories.
+    const perCategory = own.flatMap((recheck) =>
+      getRecheckCategories(recheck).map((category) => ({ ...recheck, category })),
+    )
+    Object.entries(groupBy(perCategory, (recheck) => recheck.category)).forEach(([category, items]) => {
       if (items.length < 2) return
       const leadNames = uniqueNames(items, leadsById)
-      const label = RECHECK_CATEGORIES[category].label
+      const label = RECHECK_CATEGORIES[category]?.label ?? category
       findings.push({
         id: `category-${bda.email}-${category}`,
         kind: 'category',
@@ -298,9 +307,7 @@ export function findRepeatPatterns(history, leads, periods) {
   Object.entries(groupBy(recent, (recheck) => recheck.leadId)).forEach(([leadId, items]) => {
     if (items.length < 2) return
     const lead = leadsById[leadId]
-    const categories = [
-      ...new Set(items.map((item) => RECHECK_CATEGORIES[item.category]?.label ?? item.category)),
-    ]
+    const categories = [...new Set(items.flatMap((item) => formatRecheckCategories(item).split(', ')))]
     findings.push({
       id: `lead-${leadId}`,
       kind: 'lead',

@@ -3,10 +3,11 @@ import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
 import { ACTION_PRIORITIES } from '../../utils/bdaMetrics'
 import { paths } from '../../utils/routePaths'
+import { contactName } from '../../utils/formatters'
 import { MUTED_TEXT } from '../../styles/tableSx'
 
-function getColumns(onUpdateCc) {
-  return [
+function getColumns(onUpdateCc, showBda) {
+  const columns = [
     {
       label: 'Priority',
       render: (item) => {
@@ -34,6 +35,7 @@ function getColumns(onUpdateCc) {
         </Link>
       ),
     },
+    ...(showBda ? [{ label: 'BDA', render: (item) => contactName(item.lead.saleOwner) }] : []),
     {
       label: 'What to do',
       render: (item) => (
@@ -62,11 +64,13 @@ function getColumns(onUpdateCc) {
         ),
     },
   ]
+  return columns
 }
 
-// The BDA's prioritised to-do list (see buildActionItems).
-function ActionList({ items, onUpdateCc }) {
-  return <DataTable columns={getColumns(onUpdateCc)} rows={items} />
+// The BDA's prioritised to-do list (see buildActionItems); `showBda` adds the owner column for a
+// BDM's team view.
+function ActionList({ items, onUpdateCc, showBda = false }) {
+  return <DataTable columns={getColumns(onUpdateCc, showBda)} rows={items} />
 }
 
 export default ActionList
