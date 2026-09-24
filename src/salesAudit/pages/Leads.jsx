@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Chip, Snackbar, Stack, Tab, Tabs } from '@mui/material'
+import { Alert, Badge, Box, Button, Chip, Snackbar, Stack, Tab, Tabs } from '@mui/material'
+import { FilterListRounded as FilterListRoundedIcon } from '@mui/icons-material'
 import { useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import SalesActionTable from '../components/salesTable/SalesActionTable'
+import LeadFilterDrawer from '../components/leads/LeadFilterDrawer'
 import { getLeads, sendLeadReminder } from '../apiCalls/salesAuditApi'
 import { useApi } from '../utils/useApi'
 import { useCurrentUser } from '../utils/roles'
+import { describeFilter, matchesFilters } from '../utils/leadFilters'
 import {
   LEAD_STAGES,
   getLeadStage,
@@ -72,6 +75,8 @@ function Leads({ mine = false }) {
   const [sendingId, setSendingId] = useState(null)
   const [dismissedSweep, setDismissedSweep] = useState(null)
   const [sendError, setSendError] = useState(null)
+  const [filters, setFilters] = useState([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Keeps "Time in SAP" and "Auto-mail in …" current without refetching.
   useEffect(() => {
@@ -83,9 +88,10 @@ function Leads({ mine = false }) {
     const grouped = Object.fromEntries(Object.keys(TABS).map((stage) => [stage, []]))
     data?.leads
       .filter((lead) => !mine || lead.auditCoordinator.toLowerCase() === user.email)
+      .filter((lead) => matchesFilters(lead, filters, now))
       .forEach((lead) => grouped[getLeadStage(lead)].push(lead))
     return grouped
-  }, [data, mine, user.email])
+  }, [data, mine, user.email, filters, now])
 
   const visibleLeads = leadsByStage[tab]
   const showSweepToast = data?.mailsSentThisSweep > 0 && dismissedSweep !== data
@@ -130,7 +136,7 @@ function Leads({ mine = false }) {
       <PageState
         loading={loading}
         error={error}
-        empty={visibleLeads.length === 0}
+        empty={visibleLeads.length === 0 && filters.length === 0}
         emptyMessage={mine ? `${TABS[tab].emptyMessage} (among leads assigned to you)` : TABS[tab].emptyMessage}
         onRetry={reload}
       >
@@ -146,7 +152,39 @@ function Leads({ mine = false }) {
             ))}
           </Stack>
         )}
+        {filters.length > 0 && (
+          <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', rowGap: 1 }}>
+            {filters.map((filter) => (
+              <Chip
+                key={filter.id}
+                label={describeFilter(filter)}
+                size="small"
+                color="primary"
+                variant="outlined"
+                onDelete={() => setFilters((current) => current.filter((item) => item.id !== filter.id))}
+              />
+            ))}
+            <Chip label="Clear filters" size="small" onClick={() => setFilters([])} />
+          </Stack>
+        )}
+        {filters.length > 0 && visibleLeads.length === 0 && (
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            No leads in this tab match the filters.
+          </Alert>
+        )}
         <SalesActionTable
+          actions={
+            <Badge badgeContent={filters.length} color="primary">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FilterListRoundedIcon />}
+                onClick={() => setFiltersOpen(true)}
+              >
+                Filters
+              </Button>
+            </Badge>
+          }
           leads={visibleLeads}
           showEscalation={tab === LEAD_STAGES.pending}
           now={now}
@@ -155,6 +193,18 @@ function Leads({ mine = false }) {
           onSend={handleSend}
         />
       </PageState>
+
+      {filtersOpen && (
+        <LeadFilterDrawer
+          open
+          filters={filters}
+          onClose={() => setFiltersOpen(false)}
+          onApply={(next) => {
+            setFilters(next)
+            setFiltersOpen(false)
+          }}
+        />
+      )}
 
       <Snackbar
         open={showSweepToast}

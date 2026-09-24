@@ -30,6 +30,7 @@ import {
 import { useApi } from '../utils/useApi'
 import { RECHECK_CATEGORIES, getCcStatus, getRecheckCategories } from '../utils/recheckStatus'
 import { contactName } from '../utils/formatters'
+import { ROLES, canSeeLead, useCurrentUser } from '../utils/roles'
 
 const TABS = {
   rechecks: 'Rechecks',
@@ -44,16 +45,30 @@ function resolveTab(tab) {
   return tab in TABS ? tab : 'rechecks'
 }
 
+// Auditors see every recheck and can raise / resolve them and track CCs. A BDA sees the rechecks
+// on their own leads, a BDM those on their team's leads, read-only (CC updates live in the BDA
+// View).
 function Rechecks() {
   const token = useSelector((state) => state.reducers.commonData.authToken)
-  const canEdit = useSelector((state) =>
-    Boolean(state.reducers.commonData.permission.salesAudit?.write),
-  )
+  const user = useCurrentUser()
+  const isAuditor = user.role === ROLES.auditor
+  const canEdit =
+    useSelector((state) => Boolean(state.reducers.commonData.permission.salesAudit?.write)) &&
+    isAuditor
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab = resolveTab(searchParams.get('tab'))
+  const tab = isAuditor ? resolveTab(searchParams.get('tab')) : 'rechecks'
 
   const { data, loading, error, reload } = useApi(fetchRechecksPage)
-  const [rechecks, leads] = data ?? [[], []]
+  const [allRechecks, allLeads] = data ?? [[], []]
+  const leads = useMemo(
+    () => (isAuditor ? allLeads : allLeads.filter((lead) => canSeeLead(user, lead))),
+    [allLeads, isAuditor, user],
+  )
+  const rechecks = useMemo(() => {
+    if (isAuditor) return allRechecks
+    const ids = new Set(leads.map((lead) => lead.id))
+    return allRechecks.filter((recheck) => ids.has(recheck.leadId))
+  }, [allRechecks, leads, isAuditor])
 
   const [category, setCategory] = useState(() =>
     searchParams.get('category') in RECHECK_CATEGORIES ? searchParams.get('category') : 'all',
@@ -122,7 +137,13 @@ function Rechecks() {
     <Box>
       <PageHeader
         title="Rechecks"
-        subtitle="Issues raised by auditors, and confirmation-call status per lead"
+        subtitle={
+          isAuditor
+            ? 'Issues raised by auditors, and confirmation-call status per lead'
+            : user.role === ROLES.bdm
+              ? "Issues the auditors raised on your team's leads"
+              : 'Issues the auditors raised on your leads'
+        }
         action={
           canEdit && (
             <Button
@@ -142,9 +163,11 @@ function Rechecks() {
         onChange={(_, next) => setSearchParams({ tab: next })}
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        {Object.keys(TABS).map((key) => (
-          <Tab key={key} value={key} label={tabLabel(key)} />
-        ))}
+        {Object.keys(TABS)
+          .filter((key) => isAuditor || key === 'rechecks')
+          .map((key) => (
+            <Tab key={key} value={key} label={tabLabel(key)} />
+          ))}
       </Tabs>
 
       <PageState loading={loading} error={error} onRetry={reload}>

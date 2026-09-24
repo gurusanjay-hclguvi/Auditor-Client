@@ -16,6 +16,8 @@ import { fromZohoLead, parseZohoDate, toPayments } from '../../utils/zohoLead'
 //   zenId, onboardCoordinator
 //   CourseDiscountDetails  discount requests on partial plans paid in the same month (two
 //                     Approved, one Requested)
+//   batchData, salesFrom, terms&conditions, promoCode, admissionDetails.admissionform, medium,
+//                     campaign  lead details used by the Leads filters
 //   recheckDetails    rechecks raised in Zoho (open "Confirmation Call" tickets on converted
 //                     leads without a CC, one multi-category ticket, one closed)
 //   ccUploadedAt      Unix seconds, added by the backend (mock: a few hours after enrollment
@@ -68,6 +70,32 @@ function shiftLead(lead, index) {
     shifted.ccUploadedAt = enrolledAt + (6 + (index % 5) * 9) * HOUR
   }
   return shifted
+}
+
+// Batch, marketing and admission details (for the Leads filters), kept when the export has them.
+const MEDIUMS = ['DS-Software-Interest-OTP', 'Webinar-Registrants', 'Retarget-Visitors']
+const CAMPAIGNS = ['DS-Tamil-Video-June', 'No-Coding-Career-Switch', 'Weekend-Batch-Promo']
+function withLeadDetails(lead, index) {
+  // Dates are already shifted here; the batch starts a week after enrollment.
+  const enrolled = lead.dateOfEnrollment
+  const batchStart = enrolled
+    ? new Date(Date.parse(`${toDay(enrolled)}T00:00:00Z`) + 7 * DAY_MS).toISOString().slice(0, 10)
+    : ''
+  return {
+    batchData: lead.batchData ?? {
+      batchName: `${(lead.product ?? 'ZEN').split('_').slice(0, 2).join('')}-${lead.modeOfStudy === 'WeekEND' ? 'WE' : 'WD'}-B${20 + (index % 9)}`,
+      startDate: batchStart,
+    },
+    salesFrom: lead.salesFrom ?? (index % 3 === 0 ? 'South Mainboot' : 'South Inside Sales'),
+    'terms&conditions': lead['terms&conditions'] ?? (index % 4 === 0 ? 'No' : 'Yes'),
+    promoCode: lead.promoCode ?? (index % 6 === 0 ? `ZEN${500 + index}` : ''),
+    medium: lead.medium || MEDIUMS[index % MEDIUMS.length],
+    campaign: lead.campaign || CAMPAIGNS[index % CAMPAIGNS.length],
+    admissionDetails: {
+      ...lead.admissionDetails,
+      admissionform: lead.admissionDetails?.admissionform ?? (index % 5 === 0 ? 'not found' : 'Filled'),
+    },
+  }
 }
 
 // Discount requests: partial plans with willLeadPayinSameMonth "Yes" (as Zoho sends them).
@@ -160,6 +188,7 @@ export const MOCK_ZOHO_LEADS = withZohoRechecks(
       ...lead,
       zenId: lead.zenId ?? String(76000 + index),
       onboardCoordinator: lead.onboardCoordinator ?? MOCK_ONBOARDERS[index % MOCK_ONBOARDERS.length],
+      ...withLeadDetails(lead, index),
     })),
   ),
 )

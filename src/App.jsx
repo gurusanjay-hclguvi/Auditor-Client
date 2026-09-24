@@ -50,8 +50,9 @@ function MockUserPicker({ user }) {
       value={user && options.some((option) => option.email === user.email) ? `${user.role}:${user.email}` : ''}
       onChange={(event) => {
         const next = options.find((option) => `${option.role}:${option.email}` === event.target.value)
-        dispatch(setAuthToken(mockTokenFor(next)))
+        // Go to the new user's home first, then act as them.
         navigate(getRoleHome(next.role))
+        dispatch(setAuthToken(mockTokenFor(next)))
       }}
       sx={{ minWidth: 280 }}
     >
@@ -73,10 +74,16 @@ function App() {
   const permissions = useSelector((state) => state.reducers.commonData.permission)
   const { data: user } = useApi(loadCurrentUser)
 
-  const routes = salesAuditRoutes.filter((route) => canAccess(permissions, route.permission))
-  const navItems = salesAuditNavItems.filter(
-    (item) => permissions[item.key]?.read && (!user || canUseRoute(user, item.roles)),
+  // Only the pages the signed-in user can use: routes by permission and, once the user is known,
+  // by role (other pages' URLs go to the user's home); no nav until the user has loaded.
+  const routes = salesAuditRoutes.filter(
+    (route) => canAccess(permissions, route.permission) && (!user || canUseRoute(user, route.roles)),
   )
+  const navItems = user
+    ? salesAuditNavItems.filter(
+        (item) => permissions[item.key]?.read && canUseRoute(user, item.roles),
+      )
+    : []
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>

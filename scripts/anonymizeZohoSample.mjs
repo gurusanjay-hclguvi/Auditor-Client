@@ -111,9 +111,19 @@ const leads = records.map((lead, index) => {
     }),
     salesTeam: lead.salesTeam ?? null,
     source: lead.source ?? null,
-    medium: '',
-    content: '',
-    campaign: '',
+    // Marketing labels, not personal data
+    medium: lead.medium ?? '',
+    content: lead.content ?? '',
+    campaign: lead.campaign ?? '',
+    ...(lead.salesFrom !== undefined && { salesFrom: lead.salesFrom }),
+    ...(lead['terms&conditions'] !== undefined && { 'terms&conditions': lead['terms&conditions'] }),
+    ...(lead.promoCode !== undefined && { promoCode: lead.promoCode }),
+    ...(lead.batchData !== undefined && {
+      batchData: lead.batchData && {
+        batchName: lead.batchData.batchName ?? null,
+        startDate: lead.batchData.startDate ?? null,
+      },
+    }),
     affiliateId: '',
     modeOfStudy: lead.modeOfStudy ?? null,
     preferredLanguage: lead.preferredLanguage ?? null,
@@ -123,7 +133,11 @@ const leads = records.map((lead, index) => {
     zbCustomerId: ref('79000000', 10),
     zbInvoiceId: ref('79100000', 10),
     confirmationCall: fakeSourceLink(lead.confirmationCall),
-    admissionDetails: {},
+    // Only whether the admission form was filled; the rest of admissionDetails is personal
+    admissionDetails:
+      lead.admissionDetails?.admissionform === undefined
+        ? {}
+        : { admissionform: lead.admissionDetails.admissionform === 'not found' ? 'not found' : 'Filled' },
     financialDetails: (lead.financialDetails ?? []).map((record) => ({
       recordId: ref('9000000', 11),
       utrPaymentId: record.type === 'Discount' ? `CN-${String(refCounter).padStart(5, '0')}` : ref('pay_mock', 8),

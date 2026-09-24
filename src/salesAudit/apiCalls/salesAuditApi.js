@@ -77,12 +77,11 @@ const withMockAudit = (student) => ({ ...student, audit: MOCK_AUDITS[student.id]
 // token ("dev-mock-token:<email>").
 export function getCurrentUser(token) {
   if (!USE_MOCK_API) {
-    // The backend has no /sales-audit/me yet: until it does, a dev token names its user.
-    return get(token, '/me').catch((error) => {
-      const user = userFromDevToken(token)
-      if (user) return user
-      throw error
-    })
+    // A dev token (the dev shell's Mock user picker) names its user and role; the backend's
+    // /sales-audit/me is still a stub that calls everyone an auditor, so it is only asked for
+    // real (Zen) tokens.
+    const devUser = userFromDevToken(token)
+    return devUser ? Promise.resolve(devUser) : get(token, '/me')
   }
   const user = findMockUserByToken(token)
   return user ? mockResponse(user) : mockError('Unknown user for this token')

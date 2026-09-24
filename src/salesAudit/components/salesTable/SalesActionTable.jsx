@@ -181,7 +181,8 @@ function getEscalationColumns({ now, canSend, sendingId, onSend }) {
 // Needed to act on a row, so they can't be hidden.
 const LOCKED_COLUMNS = ['Audit', 'Student Name']
 
-function SalesActionTable({ leads, showEscalation, now, canSend, sendingId, onSend }) {
+// `actions`: extra toolbar content shown left of the Columns button (e.g. Filters).
+function SalesActionTable({ leads, showEscalation, now, canSend, sendingId, onSend, actions }) {
   const rows = useMemo(
     () => leads.map((lead) => ({ ...lead, flags: getSalesFlags(lead) })),
     [leads],
@@ -195,7 +196,8 @@ function SalesActionTable({ leads, showEscalation, now, canSend, sendingId, onSe
   )
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+        {actions}
         <ColumnPicker
           labels={columns.map((column) => column.label)}
           locked={LOCKED_COLUMNS}

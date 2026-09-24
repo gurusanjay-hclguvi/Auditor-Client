@@ -79,8 +79,8 @@ role doesn't match, so the role rules hold inside Zen's shell too. The role deci
 | Role | Nav | Can open |
 |---|---|---|
 | **Auditor** | My Leads · All Leads · Audit Overview · Rechecks | Every audit page and every student page. **No BDA View.** |
-| **BDM** | BDA View | Their team's leads: "Viewing as" **Home · all my BDAs** (everything added up, plus a per-BDA table) or one BDA under them. Student pages of their team's leads only. |
-| **BDA** | BDA View | Their own leads only (no picker). Student pages of their own leads only. |
+| **BDM** | BDA View · Rechecks | Their team's leads: "Viewing as" **Home · all my BDAs** (everything added up, plus a per-BDA table) or one BDA under them. Student pages of their team's leads only. |
+| **BDA** | BDA View · Rechecks | Their own leads only (no picker). Student pages of their own leads only. |
 
 A BDM's team is every lead whose `saleOwnerManager` is them; a BDA's leads are those whose
 `saleOwner` is them (`canSeeLead`). Opening another team's student page by URL shows "This lead
@@ -88,13 +88,21 @@ isn't one of yours". Pages a role can't use are left out of the nav; opening one
 role notice with a link to the role's own page. Student pages go back to Leads (auditor) or BDA View (BDA/BDM);
 *Open audit* shows for the auditor only.
 
-**Trying the roles in dev:** the stub token names a mock user (`dev-mock-token:<email>`); the
-**Mock user (dev)** picker in the app bar swaps it (the dev stand-in for logging in as someone
-else) and opens that role's home. The app starts as `auditor1@example.com`. Mock users
+**Trying the roles in dev:** the stub token names a mock user (`dev-mock-token:<role>:<email>`);
+the **Mock user (dev)** picker in the app bar swaps it (the dev stand-in for logging in as someone
+else), opens that role's home and shows only that role's pages in the nav. The app starts as
+`auditor1@example.com`; the dev shell remembers the picked user for the browser tab
+(`sessionStorage`), so a reload keeps it. A dev token's role is used as is — the deployed
+backend's `/sales-audit/me` is still a stub that calls everyone an auditor, so it is only asked
+for real (Zen) tokens.
+
+**Rechecks for BDAs and BDMs:** the Rechecks page shows a BDA the rechecks on their own leads and
+a BDM those on their team's leads, read-only (no *Raise recheck*, no *Mark resolved*, no CC
+Status tab — CC updates are in the BDA View). Mock users
 (`apiCalls/mocks/users.js`) come from the mock leads: auditors `auditor1…3@example.com` (from
 `auditCoordinator`), BDMs `manager1…11@example.com`, BDAs `owner1…39@example.com`.
 
-Nav order: **My Leads · All Leads · Audit Overview · Rechecks** (auditor) or **BDA View** (BDA/BDM). The Lead
+Nav order: **My Leads · All Leads · Audit Overview · Rechecks** (auditor) or **BDA View · Rechecks** (BDA/BDM). The Lead
 Audit Workspace, student and CC pages are opened from rows and buttons.
 
 ### My Leads / All Leads — `/sales-audit/my-leads`, `/sales-audit/leads` (`?tab=pending|awaiting|audited`)
@@ -115,6 +123,28 @@ Auditors land on My Leads; All Leads shows every lead, including unassigned ones
   - Pending tab only: **Time in SAP** (red after 24h) and **Escalation** — "Mailed BDA & Accounts ·
     date" (hover for recipients) or "Auto-mail in 5h"; a **send-now** button for users with write
     access (`components/leads/EscalationCell.jsx`).
+- **Filters** button (above the table, with the number of active filters) opens a sidebar from
+  the right (`components/leads/LeadFilterDrawer.jsx`, logic in `utils/leadFilters.js`). It lists
+  **every field as its own row** (scrollable, with a *Find a field* search): a **checkbox** with
+  the field name, then that field's **condition** dropdown and **value** input (two for
+  *Between*; none for conditions like *Is Not Empty* or *Today*). Tick as many fields as needed
+  (picking a condition or typing a value ticks it); a lead must match every ticked filter.
+  *Apply* shows how many are selected; *Clear all* resets. Active filters show as chips above the table (click × to drop one) and
+  the tab counts follow them.
+  - Fields: ZEN ID, Student Full Name, Date of Enrolment, Filled Admission Form?, Sale Owner,
+    Email, Primary Phone, Product, Course Value, Total Paid, Balance Amount, Assigned Batch
+    (`batchData.batchName`), Batch Start Date (`batchData.startDate`), Mode of Study, Preferred
+    Language, Source Medium DM (`medium`), Source Campaign DM (`campaign`), Lead Source, Superleap
+    Lead Id, Payment Type, Payment Mode (first `financialDetails` `zbModeOfPayment`), Sales Team,
+    Sales From, Confirmation Call Link, Terms and Conditions (`terms&conditions`), Promo Code,
+    Will the entire amount be paid off in the same month?
+  - Text / email fields: Is · Is Not Empty · Starts With · Ends With · Contains · Not Contains
+    (case-insensitive).
+  - Date fields (Date of Enrolment, Batch Start Date): Is · Is not · Empty · Is not Empty ·
+    Before · After · Between, and under Day / Week / Month / Year: Yesterday · Today · Tomorrow ·
+    Last / This / Next Week (weeks start Monday) · Last / This / Next Month · Last / This / Next
+    Year, in the viewer's local time.
+  - Against the deployed backend most of these fields are empty (its lead doesn't carry them yet).
 - **Columns** dropdown (above the table): a checkbox per column to show or hide it, plus *Show all
   columns*. *Audit* and *Student Name* always stay. The choice is remembered in this browser
   (`localStorage`), for both My Leads and All Leads (`components/common/ColumnPicker.jsx`,

@@ -37,9 +37,9 @@ const routes = [
   },
   {
     path: ROUTE_PATTERNS.rechecks,
-    component: gated(() => import('./pages/Rechecks'), AUDITOR_ONLY),
+    component: gated(() => import('./pages/Rechecks'), ALL_ROLES),
     permission: VIEW_PERMISSION,
-    roles: AUDITOR_ONLY,
+    roles: ALL_ROLES,
   },
   {
     path: ROUTE_PATTERNS.bda,
