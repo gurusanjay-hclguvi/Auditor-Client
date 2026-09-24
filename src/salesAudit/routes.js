@@ -1,64 +1,73 @@
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
+import RoleGate from './components/common/RoleGate'
 import { ROUTE_PATTERNS } from './utils/routePaths'
 import { ALL_ROLES, AUDITOR_ONLY, SALES_TEAM_ONLY } from './utils/roles'
 
 const VIEW_PERMISSION = 'salesAudit.view'
 
 // `roles`: who may open the page. The audit pages are the auditor's; the BDA View is the BDAs'
-// and BDMs'; the student pages it links to are open to everyone.
+// and BDMs'; the student pages it links to are open to everyone. Each page is wrapped in RoleGate,
+// which loads the signed-in user (GET /me) and enforces `roles`, so this works in Zen's shell
+// (which only checks `permission`) as well as in the dev shell.
+function gated(load, roles) {
+  const Page = lazy(load)
+  return function GatedPage() {
+    return createElement(RoleGate, { roles }, createElement(Page))
+  }
+}
 const routes = [
   // First auditor route = where an auditor lands after login.
   {
     path: ROUTE_PATTERNS.myLeads,
-    component: lazy(() => import('./pages/MyLeads')),
+    component: gated(() => import('./pages/MyLeads'), AUDITOR_ONLY),
     permission: VIEW_PERMISSION,
     roles: AUDITOR_ONLY,
   },
   {
     path: ROUTE_PATTERNS.leads,
-    component: lazy(() => import('./pages/Leads')),
+    component: gated(() => import('./pages/Leads'), AUDITOR_ONLY),
     permission: VIEW_PERMISSION,
     roles: AUDITOR_ONLY,
   },
   {
     path: ROUTE_PATTERNS.leadAudit,
-    component: lazy(() => import('./pages/LeadAudit')),
+    component: gated(() => import('./pages/LeadAudit'), AUDITOR_ONLY),
     permission: VIEW_PERMISSION,
     roles: AUDITOR_ONLY,
   },
   {
     path: ROUTE_PATTERNS.rechecks,
-    component: lazy(() => import('./pages/Rechecks')),
+    component: gated(() => import('./pages/Rechecks'), AUDITOR_ONLY),
     permission: VIEW_PERMISSION,
     roles: AUDITOR_ONLY,
   },
   {
     path: ROUTE_PATTERNS.bda,
-    component: lazy(() => import('./pages/BdaView')),
+    component: gated(() => import('./pages/BdaView'), SALES_TEAM_ONLY),
     permission: VIEW_PERMISSION,
     roles: SALES_TEAM_ONLY,
   },
   {
     path: ROUTE_PATTERNS.overview,
-    component: lazy(() => import('./pages/AuditOverview')),
+    component: gated(() => import('./pages/AuditOverview'), AUDITOR_ONLY),
     permission: VIEW_PERMISSION,
     roles: AUDITOR_ONLY,
   },
   {
     path: ROUTE_PATTERNS.student,
-    component: lazy(() => import('./pages/StudentDetail')),
+    component: gated(() => import('./pages/StudentDetail'), ALL_ROLES),
     permission: VIEW_PERMISSION,
     roles: ALL_ROLES,
   },
   {
     path: ROUTE_PATTERNS.studentPayments,
-    component: lazy(() => import('./pages/StudentPayments')),
+    component: gated(() => import('./pages/StudentPayments'), ALL_ROLES),
     permission: VIEW_PERMISSION,
     roles: ALL_ROLES,
   },
   {
     path: ROUTE_PATTERNS.ccVerification,
-    component: lazy(() => import('./pages/CcVerification')),
+    component: gated(() => import('./pages/CcVerification'), ALL_ROLES),
     permission: VIEW_PERMISSION,
     roles: ALL_ROLES,
   },

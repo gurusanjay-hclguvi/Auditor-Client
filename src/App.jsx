@@ -3,39 +3,73 @@ import {
   AppBar,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Container,
+  ListSubheader,
+  MenuItem,
+  TextField,
   Toolbar,
   Typography,
 } from '@mui/material'
-import { LogoutRounded as LogoutRoundedIcon } from '@mui/icons-material'
 import { useDispatch, useSelector } from 'react-redux'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import salesAuditRoutes from './salesAudit/routes'
 import salesAuditNavItems from './salesAudit/navItems'
-import Login from './Login'
-import { logOut } from './store/commonDataSlice'
-import { ROLE_LABELS, canUseRoute, useCurrentUser } from './salesAudit/utils/roles'
+import { setAuthToken } from './store/commonDataSlice'
+import { useApi } from './salesAudit/utils/useApi'
+import {
+  ROLES,
+  ROLE_LABELS,
+  canUseRoute,
+  getRoleHome,
+  loadCurrentUser,
+} from './salesAudit/utils/roles'
+import { MOCK_USERS, mockTokenFor } from './salesAudit/apiCalls/mocks/users'
 
-// Dev shell standing in for the Zen portal: login, then permission- and role-gated nav and routes.
+// Dev shell standing in for the Zen portal (starter kit): no login. The token and permissions
+// come from the stub store; the feature gates routes by permission and, inside each page, by the
+// role of the user GET /me returns. Here the nav also follows that role.
 function canAccess(permissions, permission) {
   const [key, action] = permission.split('.')
   return Boolean(permissions[key]?.[action === 'edit' ? 'write' : 'read'])
 }
 
-function App() {
+// Dev only: act as any mock user by swapping the token (Zen does this by who logs in).
+function MockUserPicker({ user }) {
   const dispatch = useDispatch()
-  const user = useCurrentUser()
-  const permissions = useSelector((state) => state.reducers.commonData.permission)
-
-  if (!user) return <Login />
-
-  const routes = salesAuditRoutes.filter(
-    (route) => canAccess(permissions, route.permission) && canUseRoute(user, route.roles),
+  const navigate = useNavigate()
+  return (
+    <TextField
+      select
+      size="small"
+      label="Mock user (dev)"
+      value={user?.email ?? ''}
+      onChange={(event) => {
+        const next = MOCK_USERS.find((candidate) => candidate.email === event.target.value)
+        dispatch(setAuthToken(mockTokenFor(next.email)))
+        navigate(getRoleHome(next.role))
+      }}
+      sx={{ minWidth: 280 }}
+    >
+      {Object.values(ROLES).flatMap((role) => [
+        <ListSubheader key={`header-${role}`}>{ROLE_LABELS[role]}</ListSubheader>,
+        ...MOCK_USERS.filter((candidate) => candidate.role === role).map((candidate) => (
+          <MenuItem key={candidate.email} value={candidate.email}>
+            {candidate.name} · {candidate.email}
+          </MenuItem>
+        )),
+      ])}
+    </TextField>
   )
+}
+
+function App() {
+  const permissions = useSelector((state) => state.reducers.commonData.permission)
+  const { data: user } = useApi(loadCurrentUser)
+
+  const routes = salesAuditRoutes.filter((route) => canAccess(permissions, route.permission))
   const navItems = salesAuditNavItems.filter(
-    (item) => permissions[item.key]?.read && canUseRoute(user, item.roles),
+    (item) => permissions[item.key]?.read && (!user || canUseRoute(user, item.roles)),
   )
 
   return (
@@ -57,15 +91,7 @@ function App() {
             </Button>
           ))}
           <Box sx={{ flex: 1 }} />
-          <Chip label={`${user.name} · ${ROLE_LABELS[user.role]}`} variant="outlined" />
-          <Button
-            color="inherit"
-            startIcon={<LogoutRoundedIcon />}
-            onClick={() => dispatch(logOut())}
-            sx={{ color: 'text.secondary' }}
-          >
-            Log out
-          </Button>
+          <MockUserPicker user={user} />
         </Toolbar>
       </AppBar>
 
@@ -79,7 +105,7 @@ function App() {
               path="*"
               element={
                 routes.length ? (
-                  <Navigate to={routes[0].path} replace />
+                  <Navigate to={user ? getRoleHome(user.role) : routes[0].path} replace />
                 ) : (
                   <Typography sx={{ color: 'text.secondary' }}>
                     You don&apos;t have access to this page.

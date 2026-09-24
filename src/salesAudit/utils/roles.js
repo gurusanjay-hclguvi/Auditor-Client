@@ -1,4 +1,5 @@
-import { useSelector } from 'react-redux'
+import { createContext, useContext } from 'react'
+import { getCurrentUser } from '../apiCalls/salesAuditApi'
 import { paths } from './routePaths'
 import { isManagedBy, isOwnedBy } from './bdaMetrics'
 
@@ -21,10 +22,30 @@ export const AUDITOR_ONLY = [ROLES.auditor]
 export const SALES_TEAM_ONLY = [ROLES.bdm, ROLES.bda]
 export const ALL_ROLES = Object.values(ROLES)
 
-// The signed-in user: { name, email, role }, or null.
-export function useCurrentUser() {
-  return useSelector((state) => state.reducers.commonData.user)
+// The signed-in user comes from the API (GET /me), keyed by the token in Redux; nothing about the
+// user is stored in the client. Loaded once per token and shared by every page.
+const usersByToken = new Map()
+
+export function loadCurrentUser(token) {
+  if (!usersByToken.has(token)) {
+    const request = getCurrentUser(token).catch((error) => {
+      usersByToken.delete(token)
+      throw error
+    })
+    usersByToken.set(token, request)
+  }
+  return usersByToken.get(token)
 }
+
+// Provided by RoleGate around every Sales Audit page: { hash, name, email, role }.
+export const CurrentUserContext = createContext(null)
+
+export function useCurrentUser() {
+  return useContext(CurrentUserContext)
+}
+
+// Where each role starts: the auditor's My Leads, the sales team's BDA View.
+export const getRoleHome = (role) => (role === ROLES.auditor ? paths.myLeads() : paths.bda)
 
 export function canUseRoute(user, roles) {
   return Boolean(user) && (!roles || roles.includes(user.role))

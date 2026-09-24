@@ -66,9 +66,15 @@ All routes live under `/sales-audit` and require the `salesAudit.view` permissio
 change data (send mail now, raise/resolve recheck, update CC, mark verified) additionally need
 `permission.salesAudit.write`.
 
-### Login and roles — `src/Login.jsx`, `utils/roles.js`
-Everyone signs in first (dev-shell login with demo accounts; any password). The role decides
-what they see:
+### Auth (starter kit) and roles — `utils/roles.js`, `components/common/RoleGate.jsx`
+There is **no login** in the app (RULES.md): Zen's shell — in dev, the starter-kit stub store —
+holds the token (`state.reducers.commonData.authToken`) and permissions. Every API call sends
+`Authorization: <token>` (no `Bearer`); the backend's mock auth middleware turns it into `auth`
+(user hash) and `program`. Who the user is comes from **`GET /sales-audit/me`** →
+`{ hash, name, email, role }`, loaded once per token. Pages and nav are gated by
+`permission.salesAudit.read / .write`; on top of that every page is wrapped in `RoleGate`
+(`routes.js`), which loads the user and shows "This page isn't available for your role" when the
+role doesn't match, so the role rules hold inside Zen's shell too. The role decides what they see:
 
 | Role | Nav | Can open |
 |---|---|---|
@@ -78,14 +84,15 @@ what they see:
 
 A BDM's team is every lead whose `saleOwnerManager` is them; a BDA's leads are those whose
 `saleOwner` is them (`canSeeLead`). Opening another team's student page by URL shows "This lead
-isn't one of yours". Pages a role can't use are left out of the nav and routes; their URLs fall
-back to the role's first page. Student pages go back to Leads (auditor) or BDA View (BDA/BDM);
+isn't one of yours". Pages a role can't use are left out of the nav; opening one by URL shows the
+role notice with a link to the role's own page. Student pages go back to Leads (auditor) or BDA View (BDA/BDM);
 *Open audit* shows for the auditor only.
 
-Demo accounts (`src/mockUsers.js`) are built from the mock leads: every auditor
-(`auditor1@example.com` … `auditor3@example.com`, from `auditCoordinator`), every
-BDM (`manager1@example.com` … `manager11@example.com`) and every BDA (`owner1@example.com` …
-`owner39@example.com`). The login page lists them in a dropdown grouped by role.
+**Trying the roles in dev:** the stub token names a mock user (`dev-mock-token:<email>`); the
+**Mock user (dev)** picker in the app bar swaps it (the dev stand-in for logging in as someone
+else) and opens that role's home. The app starts as `auditor1@example.com`. Mock users
+(`apiCalls/mocks/users.js`) come from the mock leads: auditors `auditor1…3@example.com` (from
+`auditCoordinator`), BDMs `manager1…11@example.com`, BDAs `owner1…39@example.com`.
 
 Nav order: **My Leads · All Leads · Audit Overview · Rechecks** (auditor) or **BDA View** (BDA/BDM). The Lead
 Audit Workspace, student and CC pages are opened from rows and buttons.
@@ -388,7 +395,6 @@ The backend adds the audit-side fields (`sapEnteredAt`, `escalation`, `ccRespons
 src/
   App.jsx, main.jsx            dev shell standing in for the Zen portal (nav + permission gating)
   store/                       dev stand-in for Zen's commonData slice (user, token, permissions)
-  Login.jsx, mockUsers.js      dev login with demo auditor / BDM / BDA accounts
   salesAudit/                  ← the feature; everything ships from here
     routes.js                  [{ path, component: lazy(...), permission }]
     navItems.js                [{ label, route, key, image }]
@@ -464,9 +470,8 @@ To run against the backend: start it (`go run main.go` in `audit-checker-backend
 `cp .env.example .env.local` and `npm run dev`. The proxy strips `/api`, so the backend needs no
 CORS changes.
 
-Sign in with one of the demo accounts listed on the login page (see
-[Login and roles](#login-and-roles--srcloginjsx-utilsrolesjs)); every account can use the edit
-actions its pages offer.
+There is no login: pick a user in the app bar's **Mock user (dev)** picker to try the auditor,
+BDM and BDA views; every mock user can use the edit actions its pages offer.
 
 ## 11. Changes outside the feature folder
 
@@ -475,14 +480,13 @@ Only in the dev shell, which Zen replaces:
 - `src/App.jsx` — nav buttons are keyed by `item.route` instead of `item.key`, because every nav
   item shares the permission key `salesAudit`.
 - `vite.config.js` — dev proxy `/api` → backend (`DEV_API_TARGET`).
-- `src/store/commonDataSlice.js` — the signed-in user (`{ name, email, role }`), dev token and
-  permissions (`salesAudit: { read: true, write: true }` once signed in), kept in
-  `sessionStorage` so a reload doesn't log out; `logIn` / `logOut`.
-- `src/Login.jsx`, `src/mockUsers.js` — dev login and demo accounts. RULES.MD says not to build
-  login, so it lives in the dev shell: on merge, Zen's login provides `commonData.user` (with a
-  `role` of `auditor`, `bdm` or `bda`) and these two files are dropped.
-- `src/App.jsx` — shows the login when signed out; filters routes and nav by `route.roles`; user
-  chip and *Log out* in the app bar.
+- `src/store/commonDataSlice.js` — starter-kit stub: dev token `dev-mock-token:<email>` and
+  `permission.salesAudit: { read: true, write: true }`, plus a dev-only `setAuthToken`. Nothing is
+  stored in the browser.
+- `src/App.jsx` — no login; routes gated by permission; the dev nav also follows the role from
+  `GET /me`; the **Mock user (dev)** picker. On merge Zen's shell replaces both files; the feature
+  only needs Zen (or the backend) to serve `GET /sales-audit/me` with the user's `role` and
+  `email`.
 
 ## 12. Known gaps and next steps
 

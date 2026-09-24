@@ -6,6 +6,7 @@ import { MOCK_CC_RESPONSES, MOCK_RECHECKS } from './mocks/rechecks'
 import { HISTORICAL_ALERTS } from './mocks/history'
 import { MOCK_VENDOR_EMI } from './mocks/vendorEmi'
 import { MOCK_AUDITS } from './mocks/audits'
+import { findMockUserByToken } from './mocks/users'
 import {
   getEscalation,
   getEscalationLog,
@@ -65,6 +66,15 @@ const leadPath = (leadId) => `/leads/${encodeURIComponent(leadId)}`
 // Leads come from Zoho as one nested document each; fromZohoLead maps them for the pages (the
 // mock leads are already mapped). `credits` are computed from the lead's financialDetails.
 const withMockAudit = (student) => ({ ...student, audit: MOCK_AUDITS[student.id] ?? null })
+
+// Who is signed in: { hash, name, email, role: "auditor" | "bdm" | "bda" }. The backend resolves
+// it from the token (`auth` in the mock auth middleware); the mock reads the email in the dev
+// token ("dev-mock-token:<email>").
+export function getCurrentUser(token) {
+  if (!USE_MOCK_API) return get(token, '/me')
+  const user = findMockUserByToken(token)
+  return user ? mockResponse(user) : mockError('Unknown user for this token')
+}
 
 // Returns { leads, mailsSentThisSweep }. The mock runs the escalation sweep on every fetch,
 // standing in for the backend's scheduled job.
