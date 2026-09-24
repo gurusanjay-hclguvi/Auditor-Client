@@ -187,7 +187,58 @@ export function toRechecks(raw) {
   })
 }
 
+// The Go backend already maps LeadData to the page shape (models.Lead: `id`, `studentFullName`,
+// `credits`, ...), where a raw Zoho document has `superleapId`, `name`, `financialDetails`, ...
+const isMappedLead = (raw) => raw.superleapId == null && raw.id != null
+
+// Fills in what models.Lead doesn't send, deriving verification from its `credits` (the latest
+// record of each credit type) since the full financialDetails list isn't included.
+function fromMappedLead(raw) {
+  const credits = Object.fromEntries(
+    Object.keys(CREDIT_TYPES).map((key) => [key, raw.credits?.[key] ?? null]),
+  )
+  const unverifiedPayments = Object.entries(credits)
+    .filter(([, credit]) => credit && credit.verified !== 'Yes')
+    .map(([key, credit]) => ({ type: CREDIT_TYPES[key], ...credit }))
+  const paidCredits = Object.values(credits).filter(Boolean)
+  return {
+    ...raw,
+    id: text(raw.id),
+    studentFullName: text(raw.studentFullName).replace(/\s+/g, ' '),
+    email: text(raw.email),
+    primaryPhone: text(raw.primaryPhone),
+    course: text(raw.course).replace(/_/g, ' '),
+    courseValue: amount(raw.courseValue),
+    discountGiven: amount(raw.discountGiven),
+    discount: raw.discount ?? null,
+    paymentType: text(raw.paymentType),
+    partialSplitUpCategory: text(raw.partialSplitUpCategory),
+    totalPaid: amount(raw.totalPaid),
+    balanceAmount: amount(raw.balanceAmount),
+    saleOwner: text(raw.saleOwner),
+    saleOwnerManager: text(raw.saleOwnerManager),
+    auditCoordinator: text(raw.auditCoordinator),
+    emiStatus: text(raw.emiStatus),
+    emiDetails: raw.emiDetails ?? null,
+    financialDetailsTypes: raw.financialDetailsTypes ?? [],
+    allPaymentsVerified:
+      raw.allPaymentsVerified ??
+      (paidCredits.length > 0 && paidCredits.every((credit) => credit.verified === 'Yes')),
+    unverifiedPayments: raw.unverifiedPayments ?? unverifiedPayments,
+    credits,
+    confirmationCallLink: text(raw.confirmationCallLink),
+    sapEnteredAt: raw.sapEnteredAt || null,
+    escalation: raw.escalation ?? null,
+    ccResponse: raw.ccResponse ?? null,
+    audit: raw.audit ?? null,
+    ccUploadedAt: raw.ccUploadedAt ?? null,
+    schedule: raw.schedule ?? { kind: null, items: [] },
+    rechecks: raw.rechecks ?? [],
+  }
+}
+
 export function fromZohoLead(raw) {
+  if (isMappedLead(raw)) return fromMappedLead(raw)
   const payments = toPayments(raw)
   const discount = getDiscount(raw, payments)
   const emi = toEmi(raw)

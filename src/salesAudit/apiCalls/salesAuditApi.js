@@ -19,12 +19,16 @@ import {
 import { getContactEmail } from '../utils/contacts'
 import { getCategoryLabel } from '../utils/recheckStatus'
 import { getPaymentMode } from '../utils/auditChecks'
+<<<<<<< Updated upstream
 import {
   discountFromRequest,
   normalizeLead,
   normalizePayment,
   toLeadRecord,
 } from '../utils/zohoLead'
+=======
+import { fromZohoLead } from '../utils/zohoLead'
+>>>>>>> Stashed changes
 
 // Serve fixtures until the Go backend exists; set VITE_USE_MOCK_API=false to hit the real API.
 const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -359,14 +363,22 @@ export function getStudent(token, studentId) {
   return get(token, studentPath(studentId)).then(normalizeLead)
 }
 
+<<<<<<< Updated upstream
 // The lead's payment records as rows, oldest first.
+=======
+// The lead's payment rows, oldest first.
+>>>>>>> Stashed changes
 export function getStudentPayments(token, studentId) {
   if (USE_MOCK_API) {
     return mockResponse(MOCK_PAYMENTS.filter((payment) => payment.leadId === studentId))
   }
+<<<<<<< Updated upstream
   return get(token, `${studentPath(studentId)}/payments`).then((payments) =>
     payments.map(normalizePayment),
   )
+=======
+  return get(token, `${studentPath(studentId)}/payments`)
+>>>>>>> Stashed changes
 }
 
 // Check source: the lead's record next to its CC source (confirmation-call link). The backend's
