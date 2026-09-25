@@ -8,8 +8,8 @@ export function getSalesFlags(student) {
   return {
     discount: Boolean(student.discount),
     downPayment: Boolean(student.financialDetailsTypes?.includes('Credit_Booking_Amount')),
-    // Zoho can send EMIdetails with a non-EMI plan too (an earlier loan application).
-    emiDetails: Boolean(student.emiDetails) || /EMI/.test(student.paymentType),
+    // Only when Zoho sent EMIdetails; an EMI payment type alone doesn't count.
+    emiDetails: Boolean(student.emiDetails),
     partialReminders:
       ['partial', 'emiPartial'].includes(getPaymentMode(student.paymentType)) &&
       hasBalanceDue(student),

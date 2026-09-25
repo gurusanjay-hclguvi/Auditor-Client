@@ -26,7 +26,7 @@ const TABS = {
   },
   [LEAD_STAGES.awaiting]: {
     label: 'Awaiting Audit',
-    emptyMessage: 'No leads with every payment verified are waiting for audit.',
+    emptyMessage: 'No leads with the required payments verified are waiting for audit.',
   },
   [LEAD_STAGES.audited]: {
     label: 'Audited',
@@ -115,7 +115,7 @@ function Leads({ mine = false }) {
         subtitle={
           mine
             ? `Leads assigned to you (${user.email}) as audit coordinator; audit them once they reach Awaiting Audit`
-            : 'Every lead; they move to Awaiting Audit once every payment is verified, and are audited there'
+            : 'Every lead; they move to Awaiting Audit once payments are verified (full payment: fully paid, subscription: ₹15,000 incl. registration, EMI: 40% of the fee), and are audited there'
         }
       />
 

@@ -1,3 +1,5 @@
+import { getPaymentMode } from './auditChecks'
+
 // Lead verification rules for the Leads page. A lead's three credits are the down payment
 // (Credit_Booking_Amount), the initial payment (Credit_Part1) and the remaining balance
 // (Credit_RemainingBalance); each is null when unpaid, else { amount, verified, paymentDate }.
@@ -41,12 +43,48 @@ function creditStatuses(lead) {
   return Object.keys(CREDIT_TYPES).map((key) => getCreditStatus(lead.credits?.[key]))
 }
 
-// Every financialDetails record verified "Yes" moves a lead to Awaiting (`allPaymentsVerified`,
-// set by utils/zohoLead.js); a lead with no payments stays in Sales Action Pending. The auditor
-// can only audit from Awaiting; their decision (`lead.audit`) makes it Audited.
+// Verified money a lead needs before it can be audited, by payment plan. Amounts are the
+// verified payments (`verifiedPaidAmount`, set by utils/zohoLead.js) against the course fee.
+export const SUBSCRIPTION_MIN_PAID = 15000 // includes the ₹999 registration fee
+export const EMI_MIN_PAID_SHARE = 0.4
+
+// null when the plan's threshold is met, else why the lead can't be audited yet. Partial plans
+// have no threshold beyond every payment being verified.
+export function getPaymentShortfall(lead) {
+  const paid = Number(lead.verifiedPaidAmount) || 0
+  const fee = Number(lead.courseValue) || 0
+  switch (getPaymentMode(lead.paymentType)) {
+    case 'full':
+      return fee > 0 && paid >= fee ? null : 'Full payment not received and verified'
+    case 'subscription':
+      return paid >= SUBSCRIPTION_MIN_PAID
+        ? null
+        : `Subscription needs ₹${SUBSCRIPTION_MIN_PAID} verified (incl. ₹999 registration)`
+    case 'emi':
+    case 'emiPartial':
+      return fee > 0 && paid >= fee * EMI_MIN_PAID_SHARE
+        ? null
+        : `EMI needs ${EMI_MIN_PAID_SHARE * 100}% of the course fee verified`
+    default:
+      return null
+  }
+}
+
+// Why a lead in Sales Action Pending can't be audited yet.
+export function getPendingReason(lead) {
+  if (!lead.allPaymentsVerified) return 'Auditing starts once Accounts has verified every payment'
+  return getPaymentShortfall(lead)
+}
+
+// A lead moves to Awaiting once every financialDetails record is verified "Yes"
+// (`allPaymentsVerified`, set by utils/zohoLead.js) and its plan's verified amount is met (see
+// getPaymentShortfall); otherwise it stays in Sales Action Pending. The auditor can only audit
+// from Awaiting; their decision (`lead.audit`) makes it Audited.
 export function getLeadStage(lead) {
   if (lead.audit) return LEAD_STAGES.audited
-  return lead.allPaymentsVerified ? LEAD_STAGES.awaiting : LEAD_STAGES.pending
+  return lead.allPaymentsVerified && !getPaymentShortfall(lead)
+    ? LEAD_STAGES.awaiting
+    : LEAD_STAGES.pending
 }
 
 export const canAudit = (lead) => getLeadStage(lead) === LEAD_STAGES.awaiting

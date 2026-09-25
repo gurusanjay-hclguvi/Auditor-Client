@@ -121,6 +121,17 @@ export function toEmi(raw) {
   }
 }
 
+// Money actually received and verified: every "Yes" record except discount credit notes.
+const sumVerifiedPaid = (records) =>
+  records
+    .filter((record) => record.verified === 'Yes' && record.type !== 'Discount')
+    .reduce((total, record) => total + (Number(record.amount) || 0), 0)
+
+// For backend leads without the full financialDetails list: the backend's own figure if sent,
+// else Total Paid once everything is verified, else the verified credits.
+const verifiedPaidOf = (raw, records, allVerified) =>
+  raw.verifiedPaidAmount ?? (allVerified ? Number(raw.totalPaid) || 0 : sumVerifiedPaid(records))
+
 // Latest record of each credit type (by payment date), as the lead's `credits`.
 function getCredits(payments) {
   return Object.fromEntries(
@@ -201,6 +212,9 @@ function fromMappedLead(raw) {
     .filter(([, credit]) => credit && credit.verified !== 'Yes')
     .map(([key, credit]) => ({ type: CREDIT_TYPES[key], ...credit }))
   const paidCredits = Object.values(credits).filter(Boolean)
+  const allPaymentsVerified =
+    raw.allPaymentsVerified ??
+    (paidCredits.length > 0 && paidCredits.every((credit) => credit.verified === 'Yes'))
   return {
     ...raw,
     id: text(raw.id),
@@ -221,9 +235,8 @@ function fromMappedLead(raw) {
     emiStatus: text(raw.emiStatus),
     emiDetails: raw.emiDetails ?? null,
     financialDetailsTypes: raw.financialDetailsTypes ?? [],
-    allPaymentsVerified:
-      raw.allPaymentsVerified ??
-      (paidCredits.length > 0 && paidCredits.every((credit) => credit.verified === 'Yes')),
+    allPaymentsVerified,
+    verifiedPaidAmount: verifiedPaidOf(raw, paidCredits, allPaymentsVerified),
     unverifiedPayments: raw.unverifiedPayments ?? unverifiedPayments,
     credits,
     confirmationCallLink: text(raw.confirmationCallLink),
@@ -270,6 +283,8 @@ export function fromZohoLead(raw) {
     financialDetailsTypes: [...new Set(payments.map((payment) => payment.type).filter(Boolean))],
     // Moves the lead from Sales Action Pending to Awaiting (see getLeadStage)
     allPaymentsVerified: payments.length > 0 && payments.every((payment) => payment.verified === 'Yes'),
+    // Checked against the payment plan's threshold (see getPaymentShortfall)
+    verifiedPaidAmount: sumVerifiedPaid(payments),
     // The records keeping it in Sales Action Pending (any that aren't "Yes")
     unverifiedPayments: payments
       .filter((payment) => payment.verified !== 'Yes')
@@ -361,6 +376,7 @@ function creditRecords(credits) {
 function fromApiLead(raw) {
   const records = creditRecords(raw.credits)
   const emi = raw.emiDetails
+  const allPaymentsVerified = records.length > 0 && records.every((record) => record.verified === 'Yes')
   return {
     escalation: null,
     ccResponse: null,
@@ -400,7 +416,8 @@ function fromApiLead(raw) {
     emiDetails: emi
       ? { vendor: '', status: text(raw.emiStatus), ...emi, tenure: emi.tenure ?? '' }
       : null,
-    allPaymentsVerified: records.length > 0 && records.every((record) => record.verified === 'Yes'),
+    allPaymentsVerified,
+    verifiedPaidAmount: verifiedPaidOf(raw, records, allPaymentsVerified),
     unverifiedPayments: records
       .filter((record) => record.verified !== 'Yes')
       .map(({ type, amount: value, verified, paymentDate }) => ({ type, amount: value, verified, paymentDate })),

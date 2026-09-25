@@ -10,7 +10,13 @@ import DiscountStatusCell from '../common/DiscountStatusCell'
 import CreditStatusCell from '../leads/CreditStatusCell'
 import EscalationCell from '../leads/EscalationCell'
 import { getSalesFlags } from '../../utils/salesFlags'
-import { LEAD_STAGES, getLeadStage, getSapAgeMs, isSapOverdue } from '../../utils/leadStatus'
+import {
+  LEAD_STAGES,
+  getLeadStage,
+  getPendingReason,
+  getSapAgeMs,
+  isSapOverdue,
+} from '../../utils/leadStatus'
 import { EMPTY_VALUE, formatCurrency, formatDuration, orEmpty } from '../../utils/formatters'
 import { paths } from '../../utils/routePaths'
 
@@ -22,12 +28,13 @@ function AmountLink({ studentId, value }) {
   )
 }
 
-// Auditing starts in Awaiting (every payment verified); audited leads can be reviewed.
+// Auditing starts in Awaiting (every payment verified and the plan's amount met); audited
+// leads can be reviewed.
 function AuditCell({ row }) {
   const stage = getLeadStage(row)
   if (stage === LEAD_STAGES.pending) {
     return (
-      <Tooltip title="Auditing starts once Accounts has verified every payment">
+      <Tooltip title={getPendingReason(row)}>
         <span>
           <Button size="small" disabled>
             Audit
