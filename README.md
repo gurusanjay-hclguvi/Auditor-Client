@@ -22,7 +22,7 @@ Requirements: Node 18.20, npm, and the backend running (see its README for the s
 
 ```bash
 npm install
-cp .env.example .env.local   # VITE_BASE_URL=/api, DEV_API_TARGET=http://127.0.0.1:8080
+cp .env.example .env.local   # VITE_BASE_URL=http://127.0.0.1:8080
 npm run dev                  # http://localhost:5173
 npm run lint
 npm run build
@@ -30,8 +30,7 @@ npm run build
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VITE_BASE_URL` | `''` | Backend base URL (`/api` with the dev proxy) |
-| `DEV_API_TARGET` | `http://127.0.0.1:8080` | Where the Vite dev server proxies `/api/*` (dev only). The proxy strips `/api`, so the backend needs no CORS changes. |
+| `VITE_BASE_URL` | `''` | Backend base URL, called directly (e.g. `http://127.0.0.1:8080`). The backend must allow CORS from the dev origin. |
 
 There is no login. Pick a member in the app bar's **Mock user (dev)** picker. It lists the backend's `salesAuditMembers`, and the token becomes `dev-mock-token:<email>`. The default is the seeded auditor TL, `tl@example.com`.
 
@@ -107,7 +106,7 @@ These are all in the dev shell, which Zen replaces:
   - The **Mock user (dev)** picker now lists members from `GET /members`.
   - The app bar shows `NotificationBell`. On merge, Zen's header needs to render `salesAudit/components/common/NotificationBell`.
 - **`src/store/commonDataSlice.js`**: the default dev token is `dev-mock-token:tl@example.com`. Older role-style dev tokens are ignored.
-- **`vite.config.js`**: unchanged (the dev proxy `/api` → `DEV_API_TARGET`).
+- **`vite.config.js`**: no dev proxy; requests go straight to `VITE_BASE_URL`.
 
 ## 5. Known gaps
 
