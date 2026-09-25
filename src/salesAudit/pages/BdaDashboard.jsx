@@ -8,7 +8,8 @@ import StatTile from '../components/common/StatTile'
 import RechecksTable from '../components/rechecks/RechecksTable'
 import CloseRecheckDialog from '../components/dialogs/CloseRecheckDialog'
 import { CcTicketAlert } from '../components/rechecks/CcTicketAlert'
-import { getBdaDashboard, getRechecks } from '../apiCalls/salesAuditApi'
+import { getBdaDashboard, getBdaDashboardSummary, getRechecks } from '../apiCalls/salesAuditApi'
+import DashboardSummary from '../components/common/DashboardSummary'
 import { MUTED_TEXT } from '../styles/tableSx'
 import { DATE_PRESETS, categoryLabel } from '../utils/labels'
 import { paths } from '../utils/routePaths'
@@ -91,6 +92,12 @@ function BdaDashboard() {
         {data && (
           <Stack gap={3}>
             <CcTicketAlert rechecks={data.ccToClose} bdm={bdm} onClose={setClosing} />
+            {bdm && (
+              <DashboardSummary
+                api={getBdaDashboardSummary}
+                filters={{ periodIn: period, bdaEmail }}
+              />
+            )}
             <Stack direction="row" gap={2} flexWrap="wrap">
               <StatTile
                 label="Leads"

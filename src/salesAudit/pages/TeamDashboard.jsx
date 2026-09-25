@@ -5,7 +5,8 @@ import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import DataTable from '../components/common/DataTable'
 import StatTile from '../components/common/StatTile'
-import { getTeamDashboard } from '../apiCalls/salesAuditApi'
+import { getTeamDashboard, getTeamDashboardSummary } from '../apiCalls/salesAuditApi'
+import DashboardSummary from '../components/common/DashboardSummary'
 import { MUTED_TEXT } from '../styles/tableSx'
 import { DATE_PRESETS } from '../utils/labels'
 import { formatDateTime } from '../utils/formatters'
@@ -120,6 +121,10 @@ function TeamDashboard() {
       >
         {data && (
           <Stack gap={3}>
+            <DashboardSummary
+              api={getTeamDashboardSummary}
+              filters={{ periodIn: period, auditorEmail }}
+            />
             <Stack direction="row" gap={2} flexWrap="wrap">
               <StatTile
                 label="Leads assigned"

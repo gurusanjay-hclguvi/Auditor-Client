@@ -76,6 +76,12 @@ export const getCcStatus = (token, filters) => get(token, '/rechecks/cc-status',
 // Dashboards. periodIn = today|thisWeek|lastWeek|thisMonth|lastMonth.
 export const getTeamDashboard = (token, filters) => get(token, '/dashboard/auditor-team', filters)
 export const getBdaDashboard = (token, filters) => get(token, '/dashboard/bda', filters)
+// One paragraph about the dashboard, written by the backend's LLM from its figures (TL; BDM).
+// Same filters as the dashboard, plus refresh: 'true' to write a new one.
+export const getTeamDashboardSummary = (token, filters) =>
+  get(token, '/dashboard/auditor-team/summary', filters)
+export const getBdaDashboardSummary = (token, filters) =>
+  get(token, '/dashboard/bda/summary', filters)
 
 // Notifications (the alert section)
 export const getNotifications = (token, unreadOnly) =>
