@@ -34,6 +34,14 @@ npm run build
 
 There is no login. Pick a member in the app bar's **Mock user (dev)** picker. It lists the backend's `salesAuditMembers`, and the token becomes `dev-mock-token:<email>`. The default is the seeded auditor TL, `tl@example.com`.
 
+### Deploying to Vercel
+
+`vercel.json` sets up the Vite build (`npm run build` → `dist`), a catch-all rewrite to `index.html` so `BrowserRouter` deep links survive a refresh, and long-lived caching for the hashed `/assets/*` files.
+
+1. Import the repo in Vercel. The settings come from `vercel.json`.
+2. Under **Settings → Environment Variables**, set `VITE_BASE_URL` to the backend (e.g. `https://audit-checker-backend.onrender.com`). `.env` is not committed, and Vite bakes the value in at build time, so redeploy after changing it.
+3. Allow the Vercel domain (`https://<project>.vercel.app` and any custom domain) in the backend's CORS config.
+
 ## 2. Pages
 
 | Page | Route | Roles | What it does |
