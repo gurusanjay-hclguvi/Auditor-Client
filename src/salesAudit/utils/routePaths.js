@@ -3,26 +3,28 @@ const BASE = '/sales-audit'
 export const ROUTE_PATTERNS = {
   myLeads: `${BASE}/my-leads`,
   leads: `${BASE}/leads`,
-  leadAudit: `${BASE}/leads/:studentId/audit`,
+  lead: `${BASE}/leads/:leadId`,
+  leadAudit: `${BASE}/leads/:leadId/audit`,
+  ccVerification: `${BASE}/leads/:leadId/cc-verification`,
   rechecks: `${BASE}/rechecks`,
-  bda: `${BASE}/bda`,
-  overview: `${BASE}/overview`,
-  student: `${BASE}/students/:studentId`,
-  studentPayments: `${BASE}/students/:studentId/payments`,
-  ccVerification: `${BASE}/students/:studentId/cc-verification`,
+  teamDashboard: `${BASE}/team-dashboard`,
+  bdaDashboard: `${BASE}/dashboard`,
+  alerts: `${BASE}/alerts`,
+  members: `${BASE}/members`,
 }
 
-const studentBase = (studentId) => `${BASE}/students/${encodeURIComponent(studentId)}`
+const leadBase = (leadId) => `${BASE}/leads/${encodeURIComponent(leadId)}`
 
 export const paths = {
-  myLeads: (tab) => (tab ? `${ROUTE_PATTERNS.myLeads}?tab=${tab}` : ROUTE_PATTERNS.myLeads),
-  leads: (tab) => (tab ? `${ROUTE_PATTERNS.leads}?tab=${tab}` : ROUTE_PATTERNS.leads),
-  rechecks: (tab) => (tab ? `${ROUTE_PATTERNS.rechecks}?tab=${tab}` : ROUTE_PATTERNS.rechecks),
-  bda: ROUTE_PATTERNS.bda,
-  overview: ROUTE_PATTERNS.overview,
-  leadAudit: (studentId) => `${BASE}/leads/${encodeURIComponent(studentId)}/audit`,
-  student: studentBase,
-  studentPayments: (studentId, category = 'all') =>
-    `${studentBase(studentId)}/payments?category=${category}`,
-  ccVerification: (studentId) => `${studentBase(studentId)}/cc-verification`,
+  myLeads: ROUTE_PATTERNS.myLeads,
+  leads: ROUTE_PATTERNS.leads,
+  lead: leadBase,
+  leadAudit: (leadId) => `${leadBase(leadId)}/audit`,
+  ccVerification: (leadId) => `${leadBase(leadId)}/cc-verification`,
+  rechecks: (query = '') =>
+    query ? `${ROUTE_PATTERNS.rechecks}?${query}` : ROUTE_PATTERNS.rechecks,
+  teamDashboard: ROUTE_PATTERNS.teamDashboard,
+  bdaDashboard: ROUTE_PATTERNS.bdaDashboard,
+  alerts: ROUTE_PATTERNS.alerts,
+  members: ROUTE_PATTERNS.members,
 }

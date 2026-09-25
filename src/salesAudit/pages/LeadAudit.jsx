@@ -1,201 +1,225 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Alert, Box, Button, Chip, Grid, Snackbar, Stack } from '@mui/material'
-import { VerifiedRounded as VerifiedRoundedIcon } from '@mui/icons-material'
-import { useSelector } from 'react-redux'
-import { Link as RouterLink, useParams } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Paper,
+  Snackbar,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material'
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
-import PaymentStrip from '../components/audit/PaymentStrip'
-import CheckSourceButton from '../components/ccVerification/CheckSourceButton'
-import SourceComparison from '../components/audit/SourceComparison'
-import AuditChecklist from '../components/audit/AuditChecklist'
-import MarkVerifiedDialog from '../components/audit/MarkVerifiedDialog'
-import RaiseRecheckDialog from '../components/rechecks/RaiseRecheckDialog'
-import { getLeadAudit, markLeadAudited, raiseRecheck } from '../apiCalls/salesAuditApi'
-import { useApi } from '../utils/useApi'
-import { buildAuditSections, buildChecklist, checklistPasses } from '../utils/auditChecks'
-import { LEAD_STAGES, getLeadStage, getSapAgeMs, isSapOverdue } from '../utils/leadStatus'
-import { contactName, formatDateTime, formatDuration } from '../utils/formatters'
+import { AuditStatusChip, CcStatusChip, MatchChip } from '../components/common/Chips'
+import ChecklistDialog from '../components/dialogs/ChecklistDialog'
+import RaiseRecheckDialog from '../components/dialogs/RaiseRecheckDialog'
+import { getAuditView } from '../apiCalls/salesAuditApi'
+import { MUTED_TEXT, bodyCellSx, headCellSx } from '../styles/tableSx'
+import { CC_TYPE_LABELS } from '../utils/labels'
+import { EMPTY_VALUE, formatDateTime } from '../utils/formatters'
 import { paths } from '../utils/routePaths'
+import { useCanWrite } from '../utils/roles'
+import { useApi } from '../utils/useApi'
 
-// Lead Audit Workspace: everything the auditor checks for one lead, on one screen.
+const SECTION_LABELS = {
+  personal: 'Personal details',
+  course: 'Course details',
+  payment: 'Payment details',
+}
+
+// The audit: our database on the left, what the CC (confirmation call or PDF) says on the right,
+// and whether each field matches. From here the auditor completes the audit with the checklist or
+// raises a recheck.
 function LeadAudit() {
-  const { studentId } = useParams()
-  const token = useSelector((state) => state.reducers.commonData.authToken)
-  const canEdit = useSelector((state) =>
-    Boolean(state.reducers.commonData.permission.salesAudit?.write),
+  const { leadId } = useParams()
+  const { data, loading, error, reload } = useApi(
+    useCallback((token) => getAuditView(token, leadId), [leadId]),
   )
-  const fetchAudit = useCallback((authToken) => getLeadAudit(authToken, studentId), [studentId])
-  const { data, loading, error, reload } = useApi(fetchAudit)
+  return (
+    <PageState loading={loading} error={error} onRetry={reload}>
+      {data && <AuditWorkspace view={data} reload={reload} />}
+    </PageState>
+  )
+}
 
-  const [now] = useState(() => Date.now())
-  const [recheckPrefill, setRecheckPrefill] = useState(null)
-  const [verifying, setVerifying] = useState(false)
-  const [toast, setToast] = useState(null)
-
-  const view = useMemo(() => {
-    if (!data) return null
-    const built = buildAuditSections(data)
-    const openRechecks = data.rechecks.filter((recheck) => recheck.status === 'open')
-    const checklist = buildChecklist(data, built, openRechecks)
-    return { ...built, checklist, passes: checklistPasses(checklist) }
-  }, [data])
-
-  const lead = data?.lead
-  const stage = lead && getLeadStage(lead)
-  const audited = stage === LEAD_STAGES.audited
-  // Auditing happens only in Awaiting, once Accounts has verified every payment.
-  const auditable = stage === LEAD_STAGES.awaiting
-
-  async function handleRaise(recheck) {
-    await raiseRecheck(token, recheck)
-    setRecheckPrefill(null)
-    setToast(
-      `Recheck raised. Alerted BDA ${contactName(lead.saleOwner)} and BDM ${contactName(
-        lead.saleOwnerManager,
-      )}.`,
-    )
-    reload()
-  }
-
-  async function handleVerify(overrideReason) {
-    await markLeadAudited(token, lead.id, { overrideReason })
-    setVerifying(false)
-    setToast(`${lead.studentFullName} audited and moved to Audited.`)
-    reload()
-  }
-
-  const verifyButton =
-    auditable && canEdit ? (
-      <Button
-        fullWidth
-        variant="contained"
-        color={view?.passes ? 'primary' : 'warning'}
-        startIcon={<VerifiedRoundedIcon />}
-        onClick={() => setVerifying(true)}
-      >
-        {view?.passes ? 'Mark audited' : 'Mark audited with override…'}
-      </Button>
-    ) : null
+function AuditWorkspace({ view, reload }) {
+  const navigate = useNavigate()
+  const canWrite = useCanWrite()
+  const [checklistOpen, setChecklistOpen] = useState(false)
+  const [recheckOpen, setRecheckOpen] = useState(false)
+  const [notice, setNotice] = useState(null)
+  const { lead, cc, comparison, mismatchCount, pointsCovered, checklist, rechecks, actions } = view
+  const openRecheck = rechecks.find((recheck) => recheck.status === 'open')
+  const lastClosed = rechecks.find((recheck) => recheck.status === 'closed' && !recheck.reauditedAt)
+  const sections = Object.keys(SECTION_LABELS).filter((section) =>
+    comparison.some((row) => row.section === section),
+  )
 
   return (
-    <Box>
+    <>
       <PageHeader
-        title={lead ? `Audit · ${lead.studentFullName}` : 'Audit'}
-        subtitle={lead && `${lead.course} · ${lead.paymentType}`}
-        backTo={paths.leads(stage)}
-        backLabel="Leads"
+        title={`Audit · ${lead.personal.name}`}
+        subtitle={`Zen ID ${lead.zenId} · attempt ${lead.audit.attempt + 1}`}
+        backTo={paths.lead(lead.id)}
+        backLabel="Lead details"
         action={
-          lead &&
-          (audited ? (
-            <Chip
-              icon={<VerifiedRoundedIcon />}
-              color="success"
-              label={`Audited by ${lead.audit.auditedBy} · ${formatDateTime(
-                lead.audit.auditedAt,
-              )}`}
-            />
-          ) : auditable ? (
-            <Chip color="primary" variant="outlined" label="Awaiting audit · every payment verified" />
-          ) : (
-            <Chip
-              color={isSapOverdue(lead, now) ? 'error' : 'default'}
+          <Stack direction="row" gap={1}>
+            <Button
               variant="outlined"
-              label={`In Sales Action Pending · ${formatDuration(getSapAgeMs(lead, now))}`}
-            />
-          ))
+              component={RouterLink}
+              to={paths.ccVerification(lead.id)}
+              disabled={cc.status !== 'updated'}
+            >
+              CC verify
+            </Button>
+            {canWrite && actions.canRaiseRecheck && (
+              <Button variant="outlined" color="warning" onClick={() => setRecheckOpen(true)}>
+                Recheck
+              </Button>
+            )}
+            {canWrite && (
+              <Button
+                variant="contained"
+                color="success"
+                disabled={!actions.canComplete}
+                onClick={() => setChecklistOpen(true)}
+              >
+                Checklist
+              </Button>
+            )}
+          </Stack>
         }
       />
 
-      <PageState loading={loading} error={error} onRetry={reload}>
-        {view && (
-          <Stack spacing={2.5}>
-            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-              <Chip label={`BDA: ${contactName(lead.saleOwner)}`} variant="outlined" />
-              <Chip label={`BDM: ${contactName(lead.saleOwnerManager)}`} variant="outlined" />
-              <Chip
-                label={`Audit coordinator: ${lead.auditCoordinator || 'unassigned'}`}
-                variant="outlined"
-              />
-              {data.vendorName && (
-                <Chip label={`EMI vendor: ${data.vendorName}`} variant="outlined" />
-              )}
-              <Box sx={{ flex: 1 }} />
-              <Button component={RouterLink} to={paths.student(lead.id)} size="small">
-                Lead details
-              </Button>
-              <Button component={RouterLink} to={paths.studentPayments(lead.id)} size="small">
-                All payments
-              </Button>
-              <CheckSourceButton leadId={lead.id} link={lead.confirmationCallLink} size="small" />
-            </Stack>
-
-            {stage === LEAD_STAGES.pending && (
-              <Alert severity="warning">
-                This lead is still in Sales Action Pending: not every payment has been verified by
-                Accounts. It moves to Awaiting Audit, where it can be audited, once all of them
-                are verified. The checks below are for reference.
-              </Alert>
-            )}
-
-            {audited && lead.audit.overrideReason && (
-              <Alert severity="info">Audited with an override: {lead.audit.overrideReason}</Alert>
-            )}
-
-            <Grid container spacing={2.5} alignItems="flex-start">
-              <Grid item xs={12} md={8}>
-                <Stack spacing={2.5}>
-                  <PaymentStrip lead={lead} />
-                  <SourceComparison
-                    sections={view.sections}
-                    sourceList={view.sourceList}
-                    canEdit={canEdit}
-                    onRaise={setRecheckPrefill}
-                  />
-                </Stack>
-              </Grid>
-              <Grid item xs={12} md={4} sx={{ position: { md: 'sticky' }, top: { md: 80 } }}>
-                <AuditChecklist
-                  items={view.checklist}
-                  canEdit={canEdit}
-                  onRaise={setRecheckPrefill}
-                  footer={verifyButton}
-                />
-              </Grid>
-            </Grid>
-          </Stack>
+      <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 2 }}>
+        <AuditStatusChip status={lead.audit.status} />
+        <CcStatusChip status={cc.status} />
+        {cc.type && (
+          <Chip size="small" variant="outlined" label={CC_TYPE_LABELS[cc.type] ?? cc.type} />
         )}
-      </PageState>
-
-      {recheckPrefill && (
-        <RaiseRecheckDialog
-          open
-          leads={[lead]}
-          initialValues={{ leadId: lead.id, ...recheckPrefill }}
-          onClose={() => setRecheckPrefill(null)}
-          onSubmit={handleRaise}
+        <Chip
+          size="small"
+          color={mismatchCount ? 'error' : 'success'}
+          label={mismatchCount ? `${mismatchCount} mismatch(es)` : 'Everything matches'}
         />
-      )}
-      {verifying && (
-        <MarkVerifiedDialog
-          leadName={lead.studentFullName}
-          failingItems={view.checklist.filter((item) => item.status === 'fail')}
-          onClose={() => setVerifying(false)}
-          onConfirm={handleVerify}
-        />
-      )}
+      </Stack>
 
-      <Snackbar
-        open={Boolean(toast)}
-        autoHideDuration={6000}
-        onClose={() => setToast(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert severity="success" variant="filled" onClose={() => setToast(null)}>
-          {toast}
+      {lastClosed && lead.audit.status === 'recheckClosed' && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          Recheck {lastClosed.recheckNo} was closed {formatDateTime(lastClosed.closed?.at)} by{' '}
+          {lastClosed.closed?.by?.name || lastClosed.closed?.by?.email}: {lastClosed.closed?.note}.
+          The lead can be audited again.
         </Alert>
-      </Snackbar>
-    </Box>
+      )}
+      {openRecheck && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Recheck {openRecheck.recheckNo} is open; the audit can continue once the BDA closes it.
+        </Alert>
+      )}
+      {actions.blockedReason && !openRecheck && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {actions.blockedReason}
+        </Alert>
+      )}
+      {cc.status !== 'updated' && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          The CC is not updated in Zoho yet, so there is nothing to compare. You are alerted when it
+          arrives.
+        </Alert>
+      )}
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', lg: '3fr 1fr' },
+          gap: 3,
+          alignItems: 'start',
+        }}
+      >
+        <Paper variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={headCellSx}>Field</TableCell>
+                <TableCell sx={headCellSx}>Our database</TableCell>
+                <TableCell sx={headCellSx}>From the CC</TableCell>
+                <TableCell sx={headCellSx}>Result</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sections.map((section) => [
+                <TableRow key={section}>
+                  <TableCell colSpan={4} sx={{ bgcolor: '#F6F8FB', fontWeight: 700 }}>
+                    {SECTION_LABELS[section]}
+                  </TableCell>
+                </TableRow>,
+                ...comparison
+                  .filter((row) => row.section === section)
+                  .map((row) => (
+                    <TableRow key={row.key} sx={row.match ? undefined : { bgcolor: '#FFF4F4' }}>
+                      <TableCell sx={{ ...bodyCellSx, color: MUTED_TEXT }}>{row.label}</TableCell>
+                      <TableCell sx={bodyCellSx}>{row.dbValue || EMPTY_VALUE}</TableCell>
+                      <TableCell sx={bodyCellSx}>{row.ccValue || EMPTY_VALUE}</TableCell>
+                      <TableCell sx={bodyCellSx}>
+                        <MatchChip match={row.match} />
+                      </TableCell>
+                    </TableRow>
+                  )),
+              ])}
+            </TableBody>
+          </Table>
+        </Paper>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Points covered in the CC
+          </Typography>
+          {pointsCovered.length === 0 ? (
+            <Typography variant="body2" sx={{ color: MUTED_TEXT }}>
+              Nothing read from the CC yet.
+            </Typography>
+          ) : (
+            <Stack gap={0.5}>
+              {pointsCovered.map((point) => (
+                <Typography key={point} variant="body2">
+                  ✓ {point}
+                </Typography>
+              ))}
+            </Stack>
+          )}
+        </Paper>
+      </Box>
+
+      <ChecklistDialog
+        open={checklistOpen}
+        lead={lead}
+        checklist={checklist}
+        mismatchCount={mismatchCount}
+        onClose={() => setChecklistOpen(false)}
+        onCompleted={() => navigate(paths.lead(lead.id))}
+      />
+      <RaiseRecheckDialog
+        open={recheckOpen}
+        lead={lead}
+        onClose={() => setRecheckOpen(false)}
+        onRaised={(recheck) => {
+          setNotice(`Recheck ${recheck.recheckNo} raised; the BDA and BDM were alerted`)
+          reload()
+        }}
+      />
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={5000}
+        onClose={() => setNotice(null)}
+        message={notice}
+      />
+    </>
   )
 }
 

@@ -5,7 +5,9 @@ import { MUTED_TEXT } from '../../styles/tableSx'
 function PageState({ loading, error, empty, emptyMessage, loadingMessage, onRetry, children }) {
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 10 }}>
+      <Box
+        sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 10 }}
+      >
         <CircularProgress size={32} />
         {loadingMessage && (
           <Typography variant="body2" sx={{ color: MUTED_TEXT }}>

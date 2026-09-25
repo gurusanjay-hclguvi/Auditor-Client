@@ -1,6 +1,6 @@
 import Leads from './Leads'
 
-// The auditor's own leads: those whose auditCoordinator is the signed-in auditor.
+// The auditor's own leads.
 function MyLeads() {
   return <Leads mine />
 }

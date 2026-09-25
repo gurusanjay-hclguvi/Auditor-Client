@@ -1,17 +1,20 @@
 import { createSlice } from '@reduxjs/toolkit'
 
 // Dev-shell stand-in for Zen's commonData slice (the starter kit's stub): Zen provides the real
-// token and permissions. The dev token names a user ("dev-mock-token:<role>:<email>", see
-// src/salesAudit/apiCalls/mocks/users.js); the app bar's Mock user picker swaps it. The dev shell
+// token and permissions. The dev token names a seeded member ("dev-mock-token:<email>", see the
+// backend's salesAudit/scripts/seed.js); the app bar's Mock user picker swaps it. The dev shell
 // remembers the picked mock user for the browser tab so a reload keeps it (Zen keeps its own
 // session; the feature itself never stores the token).
-const DEFAULT_TOKEN = 'dev-mock-token:auditor:auditor1@example.com'
+const DEFAULT_TOKEN = 'dev-mock-token:tl@example.com'
 const DEV_TOKEN_KEY = 'salesAuditDevMockToken'
 
 function loadDevToken() {
   try {
     const saved = sessionStorage.getItem(DEV_TOKEN_KEY)
-    return saved?.startsWith('dev-mock-token:') ? saved : DEFAULT_TOKEN
+    // Older dev tokens carried the role too ("dev-mock-token:<role>:<email>"); start over for those.
+    return saved?.startsWith('dev-mock-token:') && saved.split(':').length === 2
+      ? saved
+      : DEFAULT_TOKEN
   } catch {
     return DEFAULT_TOKEN
   }

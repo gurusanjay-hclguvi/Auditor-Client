@@ -2,16 +2,11 @@ import { Alert, Button } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import PageState from './PageState'
 import { useApi } from '../../utils/useApi'
-import {
-  CurrentUserContext,
-  ROLE_LABELS,
-  getRoleHome,
-  loadCurrentUser,
-} from '../../utils/roles'
+import { CurrentUserContext, ROLE_LABELS, getRoleHome, loadCurrentUser } from '../../utils/roles'
 
-// Wraps every Sales Audit page: loads who is signed in (GET /me, from the token in Redux) and
-// only renders the page for the roles it is meant for. Zen's shell gates by permission; roles are
-// the feature's own, so they are checked here.
+// Wraps every Sales Audit page: loads who is signed in (GET /me) and only renders the page for
+// the roles it is meant for. Zen's shell gates by permission; roles are the feature's own, so
+// they are checked here (and again by the backend).
 function RoleGate({ roles, children }) {
   const { data: user, loading, error, reload } = useApi(loadCurrentUser)
 
@@ -22,7 +17,12 @@ function RoleGate({ roles, children }) {
           <Alert
             severity="info"
             action={
-              <Button component={RouterLink} to={getRoleHome(user.role)} color="inherit" size="small">
+              <Button
+                component={RouterLink}
+                to={getRoleHome(user.role)}
+                color="inherit"
+                size="small"
+              >
                 Go to my page
               </Button>
             }

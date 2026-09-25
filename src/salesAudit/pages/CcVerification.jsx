@@ -1,92 +1,117 @@
-import { useCallback, useMemo } from 'react'
-import { Box, Grid } from '@mui/material'
+import { useCallback } from 'react'
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material'
+import { OpenInNewRounded as OpenInNewIcon } from '@mui/icons-material'
 import { useParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
-import RecordPanel from '../components/ccVerification/RecordPanel'
-import SourcePdfPanel from '../components/ccVerification/SourcePdfPanel'
-import { getCcVerification, getStudent } from '../apiCalls/salesAuditApi'
-import { useApi } from '../utils/useApi'
-import { getValueAtPath } from '../utils/compareLeadData'
-import {
-  COURSE_FIELDS,
-  PERSONAL_FIELDS,
-  getInstallmentCount,
-  getPaymentFields,
-} from '../utils/compareFields'
+import { CourseSection, PaymentSection, PersonalSection } from '../components/leads/LeadSections'
+import { getCcVerification } from '../apiCalls/salesAuditApi'
+import { MUTED_TEXT } from '../styles/tableSx'
+import { CC_TYPE_LABELS } from '../utils/labels'
 import { paths } from '../utils/routePaths'
-import { checkLeadAccess, useCurrentUser } from '../utils/roles'
+import { useApi } from '../utils/useApi'
 
-function toRows(record, fields) {
-  return fields.map(({ key, label }) => ({
-    key,
-    label,
-    value: String(getValueAtPath(record, key) ?? '').trim(),
-  }))
-}
-
-function buildSections({ paymentMode, partialSplitUpCategory, system }) {
-  const installmentCount = getInstallmentCount(paymentMode, partialSplitUpCategory)
-  return [
-    { title: 'Personal Details', rows: toRows(system, PERSONAL_FIELDS) },
-    { title: 'Course Details', rows: toRows(system, COURSE_FIELDS) },
-    {
-      title: 'Payment Details',
-      rows: toRows(system, getPaymentFields(paymentMode, installmentCount)),
-    },
-  ]
-}
-
-// Check source PDF: the database record on the left, the CC PDF (confirmationCallLink) on the
-// right.
+// Our record on the left; on the right the CC itself: the confirmation PDF, or the call
+// recording's transcript.
 function CcVerification() {
-  const { studentId } = useParams()
-  const user = useCurrentUser()
-  const fetchVerification = useCallback(
-    (token) =>
-      Promise.all([getCcVerification(token, studentId), getStudent(token, studentId)]).then(
-        ([verification, student]) => {
-          checkLeadAccess(user, student)
-          return verification
-        },
-      ),
-    [studentId, user],
+  const { leadId } = useParams()
+  const { data, loading, error, reload } = useApi(
+    useCallback((token) => getCcVerification(token, leadId), [leadId]),
   )
-  const { data, loading, error, reload } = useApi(fetchVerification)
-
-  const sections = useMemo(() => (data ? buildSections(data) : []), [data])
 
   return (
-    <Box>
-      <PageHeader
-        title={data?.system.personal?.learnerName ?? 'Check source'}
-        subtitle="Database record next to the confirmation-call source"
-        backTo={paths.student(studentId)}
-        backLabel="Student details"
-      />
-
-      <PageState loading={loading} error={error} onRetry={reload}>
-        {data && (
-          <Grid container spacing={2} alignItems="flex-start">
-            <Grid item xs={12} md={5}>
-              <RecordPanel sections={sections} />
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              md={7}
+    <PageState loading={loading} error={error} onRetry={reload}>
+      {data && (
+        <>
+          <PageHeader
+            title={`CC verify · ${data.lead.personal.name}`}
+            subtitle={CC_TYPE_LABELS[data.cc.type] ?? 'CC'}
+            backTo={paths.leadAudit(data.lead.id)}
+            backLabel="Back to the audit"
+            action={
+              <Button
+                variant="outlined"
+                href={data.cc.link}
+                target="_blank"
+                rel="noreferrer"
+                endIcon={<OpenInNewIcon />}
+              >
+                Open original
+              </Button>
+            }
+          />
+          {data.extract.mocked && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              The CC reader is not connected yet: the transcript and extracted fields are sample
+              data.
+            </Alert>
+          )}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+              gap: 3,
+              alignItems: 'start',
+            }}
+          >
+            <Stack gap={3} sx={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
+              <PersonalSection lead={data.lead} />
+              <CourseSection lead={data.lead} />
+              <PaymentSection lead={data.lead} />
+            </Stack>
+            <Paper
+              variant="outlined"
               sx={{
-                position: { md: 'sticky' },
-                top: { md: 80 },
-                height: { xs: '80vh', md: 'calc(100vh - 110px)' },
+                height: 'calc(100vh - 200px)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
-              <SourcePdfPanel url={data.pdfUrl} />
-            </Grid>
-          </Grid>
-        )}
-      </PageState>
-    </Box>
+              <CcSource data={data} />
+            </Paper>
+          </Box>
+        </>
+      )}
+    </PageState>
+  )
+}
+
+function CcSource({ data }) {
+  if (data.cc.type === 'pdf' && data.previewUrl) {
+    return (
+      <Box
+        component="iframe"
+        title="Confirmation PDF"
+        src={data.previewUrl}
+        sx={{ border: 0, width: '100%', flex: 1 }}
+      />
+    )
+  }
+  if (data.extract.transcript.length > 0) {
+    return (
+      <Stack gap={1.5} sx={{ p: 2, overflow: 'auto' }}>
+        <Typography variant="subtitle2">Call transcript</Typography>
+        {data.extract.transcript.map((line, index) => (
+          <Box key={index}>
+            <Typography variant="caption" sx={{ color: MUTED_TEXT }}>
+              {line.at} · {line.speaker}
+            </Typography>
+            <Typography variant="body2">{line.text}</Typography>
+          </Box>
+        ))}
+      </Stack>
+    )
+  }
+  return (
+    <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, p: 3 }} gap={1}>
+      <Typography variant="body2" sx={{ color: MUTED_TEXT }}>
+        This CC link cannot be shown here.
+      </Typography>
+      <Button href={data.cc.link} target="_blank" rel="noreferrer">
+        Open it in a new tab
+      </Button>
+    </Stack>
   )
 }
 

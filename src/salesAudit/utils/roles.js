@@ -1,34 +1,37 @@
 import { createContext, useContext } from 'react'
-import { getCurrentUser } from '../apiCalls/salesAuditApi'
+import { useSelector } from 'react-redux'
+import { getMe } from '../apiCalls/salesAuditApi'
 import { paths } from './routePaths'
-import { isManagedBy, isOwnedBy } from './bdaMetrics'
 
-// Who is using Sales Audit. The auditor works the audit pages; BDAs and BDMs only see the BDA
-// View (a BDA their own leads, a BDM the leads of the BDAs under them) and the student pages it
-// links to.
+// Who uses Sales Audit. Auditors (and their TL) work the leads; BDAs and BDMs fix the rechecks
+// raised on their leads. The role comes from the backend (GET /me), never from the client.
 export const ROLES = {
+  auditorTl: 'auditorTl',
   auditor: 'auditor',
   bdm: 'bdm',
   bda: 'bda',
 }
 
 export const ROLE_LABELS = {
+  auditorTl: 'Auditor TL',
   auditor: 'Auditor',
   bdm: 'BDM',
   bda: 'BDA',
 }
 
-export const AUDITOR_ONLY = [ROLES.auditor]
-export const SALES_TEAM_ONLY = [ROLES.bdm, ROLES.bda]
+export const AUDIT_TEAM = [ROLES.auditorTl, ROLES.auditor]
+export const TL_ONLY = [ROLES.auditorTl]
+export const SALES_TEAM = [ROLES.bdm, ROLES.bda]
 export const ALL_ROLES = Object.values(ROLES)
 
-// The signed-in user comes from the API (GET /me), keyed by the token in Redux; nothing about the
-// user is stored in the client. Loaded once per token and shared by every page.
+export const isAuditRole = (role) => AUDIT_TEAM.includes(role)
+
+// The signed-in member, loaded once per token and shared by every page.
 const usersByToken = new Map()
 
 export function loadCurrentUser(token) {
   if (!usersByToken.has(token)) {
-    const request = getCurrentUser(token).catch((error) => {
+    const request = getMe(token).catch((error) => {
       usersByToken.delete(token)
       throw error
     })
@@ -37,38 +40,29 @@ export function loadCurrentUser(token) {
   return usersByToken.get(token)
 }
 
-// Provided by RoleGate around every Sales Audit page: { hash, name, email, role }.
+// Provided by RoleGate around every page: the member plus `permissions` and `teamEmails`.
 export const CurrentUserContext = createContext(null)
 
 export function useCurrentUser() {
   return useContext(CurrentUserContext)
 }
 
-// Where each role starts: the auditor's My Leads, the sales team's BDA View.
-export const getRoleHome = (role) => (role === ROLES.auditor ? paths.myLeads() : paths.bda)
+// Zen's write permission for the feature; every action button needs it.
+export function useCanWrite() {
+  return useSelector((state) => Boolean(state.reducers.commonData.permission.salesAudit?.write))
+}
+
+export function useToken() {
+  return useSelector((state) => state.reducers.commonData.authToken)
+}
+
+// Where each role starts.
+export function getRoleHome(role) {
+  if (role === ROLES.auditorTl) return paths.teamDashboard
+  if (isAuditRole(role)) return paths.myLeads
+  return paths.bdaDashboard
+}
 
 export function canUseRoute(user, roles) {
   return Boolean(user) && (!roles || roles.includes(user.role))
-}
-
-// The auditor sees every lead; a BDA only their own; a BDM only their team's.
-export function canSeeLead(user, lead) {
-  if (user.role === ROLES.bda) return isOwnedBy(lead, user.email)
-  if (user.role === ROLES.bdm) return isManagedBy(lead, user.email)
-  return true
-}
-
-// For page fetchers: fails the load when the lead is outside the user's scope.
-export function checkLeadAccess(user, lead) {
-  if (lead && !canSeeLead(user, lead)) {
-    throw new Error("This lead isn't one of yours, so you can't open it.")
-  }
-  return lead
-}
-
-// Where "back" goes from the student pages: the auditor's Leads, or the sales team's BDA View.
-export function getHomeLink(role) {
-  return role === ROLES.auditor
-    ? { to: paths.leads(), label: 'Leads' }
-    : { to: paths.bda, label: 'BDA View' }
 }

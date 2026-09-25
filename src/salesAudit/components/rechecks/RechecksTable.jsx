@@ -1,130 +1,101 @@
-import { Box, Button, Chip, CircularProgress, Link, Stack, Typography } from '@mui/material'
-import { TaskAltRounded as TaskAltRoundedIcon } from '@mui/icons-material'
+import { Button, Link, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
-import MailAlertStatus from '../common/MailAlertStatus'
-import {
-  RECHECK_CATEGORIES,
-  RECHECK_STATUS,
-  getCategoryLabel,
-  getRecheckCategories,
-} from '../../utils/recheckStatus'
-import { EMPTY_VALUE, contactName, formatDateTime } from '../../utils/formatters'
+import { CategoryChip, RecheckStatusChip } from '../common/Chips'
+import { MUTED_TEXT } from '../../styles/tableSx'
+import { formatDateTime } from '../../utils/formatters'
 import { paths } from '../../utils/routePaths'
+import { isAuditRole, useCanWrite, useCurrentUser } from '../../utils/roles'
 
-function getColumns({ canEdit, resolvingId, onResolve }) {
+// Who may close: the lead's BDA, a BDM (the backend checks it is their team), any auditor.
+function canClose(user, recheck) {
+  if (recheck.status !== 'open') return false
+  if (isAuditRole(user.role) || user.role === 'bdm') return true
+  return user.role === 'bda' && recheck.bdaEmail === user.email
+}
+
+// Recheck tickets. Auditors get "Audit again" on closed tickets whose lead waits for a new audit.
+function RechecksTable({ rechecks, onClose }) {
+  const user = useCurrentUser()
+  const canWrite = useCanWrite()
   const columns = [
-    { label: 'Raised On', render: (row) => formatDateTime(row.raisedAt) },
     {
-      label: 'Student Name',
-      render: (row) =>
-        row.lead ? (
-          <Link
-            component={RouterLink}
-            to={paths.student(row.leadId)}
-            underline="hover"
-            sx={{ fontWeight: 600 }}
-          >
-            {row.lead.studentFullName}
-          </Link>
-        ) : (
-          row.leadId
-        ),
+      label: 'Recheck ID',
+      render: (recheck) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {recheck.recheckNo}
+        </Typography>
+      ),
     },
     {
-      label: 'Categories',
-      render: (row) => (
-        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 140 }}>
-          {getRecheckCategories(row).map((key) => (
-            <Chip
-              key={key}
-              label={getCategoryLabel(key)}
-              size="small"
-              color={RECHECK_CATEGORIES[key]?.color ?? 'default'}
-              variant="outlined"
-            />
-          ))}
+      label: 'Lead',
+      render: (recheck) => (
+        <Link component={RouterLink} to={paths.lead(recheck.leadId)} underline="hover">
+          {recheck.leadName || recheck.zenId}
+        </Link>
+      ),
+    },
+    { label: 'Category', render: (recheck) => <CategoryChip category={recheck.category} /> },
+    {
+      label: 'Comments',
+      render: (recheck) => (
+        <Typography variant="body2" sx={{ whiteSpace: 'normal', maxWidth: 320 }}>
+          {recheck.comments}
+        </Typography>
+      ),
+    },
+    {
+      label: 'Raised',
+      render: (recheck) => (
+        <Stack>
+          <span>{formatDateTime(recheck.raisedAt)}</span>
+          <Typography variant="caption" sx={{ color: MUTED_TEXT }}>
+            {recheck.raisedBy?.name || recheck.raisedBy?.email}
+          </Typography>
         </Stack>
       ),
     },
+    { label: 'BDA', render: (recheck) => recheck.bdaEmail },
+    { label: 'Status', render: (recheck) => <RecheckStatusChip recheck={recheck} /> },
     {
-      label: 'Issue',
-      render: (row) => (
-        <Box sx={{ minWidth: 260, maxWidth: 420, whiteSpace: 'normal' }}>{row.notes}</Box>
-      ),
-    },
-    {
-      label: 'SR ID · Attempt',
-      render: (row) =>
-        row.srId ? `${row.srId}${row.attempt ? ` · #${row.attempt}` : ''}` : EMPTY_VALUE,
-    },
-    { label: 'Raised By', render: (row) => row.raisedBy || EMPTY_VALUE },
-    { label: 'BDA', render: (row) => contactName(row.lead?.saleOwner) },
-    { label: 'BDM', render: (row) => contactName(row.lead?.saleOwnerManager) },
-    {
-      label: 'Alert',
-      render: (row) =>
-        row.alert ? (
-          <Stack spacing={0.5}>
-            <MailAlertStatus mail={row.alert} label="Alerted BDA & BDM" />
-            {row.lastReminder && (
-              <MailAlertStatus mail={row.lastReminder} label="Reminded (open >24h)" />
-            )}
+      label: 'Closed',
+      render: (recheck) =>
+        recheck.closed ? (
+          <Stack sx={{ maxWidth: 260 }}>
+            <span>{formatDateTime(recheck.closed.at)}</span>
+            <Typography variant="caption" sx={{ color: MUTED_TEXT, whiteSpace: 'normal' }}>
+              by {recheck.closed.by?.name || recheck.closed.by?.email}
+              {recheck.closed.by?.role ? ` (${recheck.closed.by.role})` : ''}: {recheck.closed.note}
+            </Typography>
           </Stack>
         ) : (
-          EMPTY_VALUE
+          '—'
         ),
     },
     {
-      label: 'Status',
-      render: (row) => {
-        const status = RECHECK_STATUS[row.status]
-        return (
-          <Chip
-            label={
-              row.status === 'resolved' && row.resolvedAt
-                ? `${status.label} · ${formatDateTime(row.resolvedAt)}`
-                : status.label
-            }
-            size="small"
-            color={status.color}
-          />
-        )
-      },
+      label: 'Actions',
+      render: (recheck) => (
+        <Stack direction="row" gap={1}>
+          {canWrite && canClose(user, recheck) && (
+            <Button size="small" variant="outlined" onClick={() => onClose(recheck)}>
+              Close ticket
+            </Button>
+          )}
+          {isAuditRole(user.role) && recheck.status === 'closed' && !recheck.reauditedAt && (
+            <Button
+              size="small"
+              variant="contained"
+              component={RouterLink}
+              to={paths.leadAudit(recheck.leadId)}
+            >
+              Audit again
+            </Button>
+          )}
+        </Stack>
+      ),
     },
   ]
-
-  if (!canEdit) return columns
-  return [
-    ...columns,
-    {
-      label: 'Action',
-      render: (row) =>
-        row.status === 'open' && row.source === 'zoho' ? (
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Close the ticket in Zoho
-          </Typography>
-        ) : row.status === 'open' ? (
-          <Button
-            size="small"
-            disabled={resolvingId === row.id}
-            startIcon={
-              resolvingId === row.id ? <CircularProgress size={14} /> : <TaskAltRoundedIcon />
-            }
-            onClick={() => onResolve(row.id)}
-          >
-            Mark resolved
-          </Button>
-        ) : (
-          EMPTY_VALUE
-        ),
-    },
-  ]
-}
-
-// rows: rechecks joined with their lead summary as `lead`.
-function RechecksTable({ rows, canEdit, resolvingId, onResolve }) {
-  return <DataTable columns={getColumns({ canEdit, resolvingId, onResolve })} rows={rows} />
+  return <DataTable columns={columns} rows={rechecks} />
 }
 
 export default RechecksTable

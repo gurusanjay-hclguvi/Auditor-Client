@@ -38,3 +38,13 @@ export function useApi(fetcher) {
     reload: () => setReloadKey((key) => key + 1),
   }
 }
+
+// A stable fetcher per query key, for useApi without useCallback: keyedFetcher((query) => (token)
+// => api(token, query)) returns (key) => the same function for the same key.
+export function keyedFetcher(build) {
+  const cache = new Map()
+  return (key) => {
+    if (!cache.has(key)) cache.set(key, build(JSON.parse(key)))
+    return cache.get(key)
+  }
+}
