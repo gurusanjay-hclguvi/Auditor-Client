@@ -63,6 +63,7 @@ function DataTable({ columns, rows, storageKey }) {
             )
           }
           onShowAll={() => update([])}
+          onHideAll={() => update(labels.filter((label) => !locked.includes(label)))}
         />
       </Stack>
       <TableContainer sx={tableContainerSx}>

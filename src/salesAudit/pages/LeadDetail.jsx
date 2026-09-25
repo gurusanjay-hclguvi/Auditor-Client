@@ -6,6 +6,7 @@ import PageState from '../components/common/PageState'
 import { SectionCard } from '../components/common/SectionCard'
 import { AuditStatusChip, CcStatusChip, RecheckStatusChip } from '../components/common/Chips'
 import { ReasonList } from '../components/rechecks/RecheckReasons'
+import { CcUpdatedChip } from '../components/rechecks/CcTicketAlert'
 import {
   AdmissionSection,
   CourseSection,
@@ -163,6 +164,7 @@ function LeadPage({ data, reload }) {
                         {recheck.recheckNo}
                       </Typography>
                       <RecheckStatusChip recheck={recheck} />
+                      <CcUpdatedChip recheck={recheck} />
                     </Stack>
                     <Box sx={{ mt: 1 }}>
                       <ReasonList recheck={recheck} />

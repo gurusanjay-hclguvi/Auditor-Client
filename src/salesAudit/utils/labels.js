@@ -66,3 +66,7 @@ export const reasonsOf = (recheck) =>
   recheck.reasons?.length
     ? recheck.reasons
     : [{ category: recheck.category, comments: recheck.comments }]
+
+// A CC recheck whose CC was updated after it was raised, but which is still open: the fix is in,
+// and only closing the ticket lets the auditor audit the lead again.
+export const ccUpdatedNotClosed = (recheck) => recheck.status === 'open' && recheck.ccUpdatedAt > 0

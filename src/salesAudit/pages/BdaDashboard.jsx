@@ -7,6 +7,7 @@ import DataTable from '../components/common/DataTable'
 import StatTile from '../components/common/StatTile'
 import RechecksTable from '../components/rechecks/RechecksTable'
 import CloseRecheckDialog from '../components/dialogs/CloseRecheckDialog'
+import { CcTicketAlert } from '../components/rechecks/CcTicketAlert'
 import { getBdaDashboard, getRechecks } from '../apiCalls/salesAuditApi'
 import { MUTED_TEXT } from '../styles/tableSx'
 import { DATE_PRESETS, categoryLabel } from '../utils/labels'
@@ -18,7 +19,8 @@ const loadDashboard = (filters) => (token) =>
   Promise.all([
     getBdaDashboard(token, filters),
     getRechecks(token, { view: 'raisedNotClosed', bdaEmail: filters.bdaEmail }),
-  ]).then(([dashboard, pending]) => ({ ...dashboard, pending }))
+    getRechecks(token, { view: 'ccUpdatedNotClosed', bdaEmail: filters.bdaEmail }),
+  ]).then(([dashboard, pending, ccToClose]) => ({ ...dashboard, pending, ccToClose }))
 
 // A BDA's performance: their leads, rechecks still to fix and fixed, by category. A BDM sees the
 // same for every BDA under them, and can pick one.
@@ -88,6 +90,7 @@ function BdaDashboard() {
       <PageState loading={loading} error={error} onRetry={reload}>
         {data && (
           <Stack gap={3}>
+            <CcTicketAlert rechecks={data.ccToClose} bdm={bdm} onClose={setClosing} />
             <Stack direction="row" gap={2} flexWrap="wrap">
               <StatTile
                 label="Leads"
@@ -98,6 +101,7 @@ function BdaDashboard() {
                 label="Audit completed"
                 value={data.totals.auditCompleted}
                 color="success.main"
+                onClick={() => navigate(`${paths.leads}?tab=completed`)}
               />
               <StatTile
                 label="Rechecks pending"

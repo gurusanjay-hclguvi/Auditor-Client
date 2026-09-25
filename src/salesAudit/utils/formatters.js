@@ -52,3 +52,13 @@ export function humanizeKey(key) {
 export function orEmpty(value) {
   return value === '' || value == null ? EMPTY_VALUE : value
 }
+
+// Seconds -> "2d 3h", "5h 12m" or "12m" (matches the backend's mails).
+export function formatElapsed(seconds) {
+  const minutes = Math.floor(Math.max(seconds, 0) / 60)
+  const days = Math.floor(minutes / (24 * 60))
+  const hours = Math.floor(minutes / 60) % 24
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes % 60}m`
+  return `${minutes}m`
+}

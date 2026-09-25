@@ -137,6 +137,7 @@ function TeamDashboard() {
                 value={data.totals.completed}
                 color="success.main"
                 hint="in the period"
+                onClick={() => navigate(`${paths.leads}?tab=completed&completedIn=${period}`)}
               />
               <StatTile
                 label="Rechecks raised"

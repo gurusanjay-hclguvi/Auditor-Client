@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Alert, Button, Snackbar, Stack, TablePagination } from '@mui/material'
+import { Alert, Button, Snackbar, Stack, Tab, TablePagination, Tabs } from '@mui/material'
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
@@ -12,7 +12,7 @@ import {
   importZoho,
   takeUpLead,
 } from '../apiCalls/salesAuditApi'
-import { FILTER_KEYS } from '../utils/leadFilters'
+import { LEAD_TABS, auditStatusFor, filterKeysOf, tabOf } from '../utils/leadFilters'
 import { isAuditRole, useCanWrite, useCurrentUser } from '../utils/roles'
 import { useAction } from '../utils/useAction'
 import { useApi } from '../utils/useApi'
@@ -21,8 +21,9 @@ const PAGE_SIZE = 25
 const loadAuditors = (token) => getMembers(token, 'auditor')
 
 // All Leads (every lead, with every stage from coming in to audit completed) and My Leads (the
-// auditor's own). BDAs and BDMs get their own / their team's leads here. Filters live in the URL
-// so a filtered list can be shared.
+// auditor's own). BDAs and BDMs get their own / their team's leads here. Two tabs split the leads
+// still being audited from the completed ones. The tab and filters live in the URL so a filtered
+// list can be shared.
 function Leads({ mine = false }) {
   const user = useCurrentUser()
   const canWrite = useCanWrite()
@@ -30,11 +31,18 @@ function Leads({ mine = false }) {
   const [notice, setNotice] = useState(null)
   const fileInput = useRef(null)
 
+  const tab = tabOf(params)
   const filters = Object.fromEntries(
-    FILTER_KEYS.filter((key) => params.get(key)).map((key) => [key, params.get(key)]),
+    filterKeysOf(tab)
+      .filter((key) => params.get(key))
+      .map((key) => [key, params.get(key)]),
   )
   const page = Number(params.get('page')) || 1
-  const query = JSON.stringify({ ...filters, page, mine })
+  const query = JSON.stringify({
+    ...filters,
+    auditStatus: auditStatusFor(tab, filters.auditStatus),
+    page,
+  })
   const { data, loading, error, reload } = useApi(
     useCallback(
       (token) =>
@@ -59,10 +67,21 @@ function Leads({ mine = false }) {
   const importer = useAction(importZoho)
   const actionError = takeUp.error || assign.error || importer.error
 
-  function setFilters(next) {
+  // New filters start from page 1 of the same tab.
+  function setFilters(next, nextTab = tab) {
     const search = new URLSearchParams()
+    if (nextTab === 'completed') search.set('tab', nextTab)
     Object.entries(next).forEach(([key, value]) => value && search.set(key, value))
     setParams(search)
+  }
+
+  // Switching tab keeps the filters both tabs take (search, region, BDA…) and drops the others.
+  function setTab(nextTab) {
+    const keys = filterKeysOf(nextTab)
+    setFilters(
+      Object.fromEntries(Object.entries(filters).filter(([key]) => keys.includes(key))),
+      nextTab,
+    )
   }
 
   function setPage(next) {
@@ -148,7 +167,13 @@ function Leads({ mine = false }) {
           {actionError}
         </Alert>
       )}
+      <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }}>
+        {LEAD_TABS.map((item) => (
+          <Tab key={item.value} value={item.value} label={item.label} />
+        ))}
+      </Tabs>
       <LeadFilters
+        tab={tab}
         filters={filters}
         onChange={setFilters}
         auditors={auditRole && !mine ? (auditors ?? []) : null}
@@ -159,7 +184,13 @@ function Leads({ mine = false }) {
         error={error}
         onRetry={reload}
         empty={data?.items.length === 0}
-        emptyMessage="No leads match these filters."
+        emptyMessage={
+          Object.keys(filters).length
+            ? 'No leads match these filters.'
+            : tab === 'completed'
+              ? 'No completed audits yet.'
+              : 'No leads waiting for an audit.'
+        }
       >
         {data && (
           <>

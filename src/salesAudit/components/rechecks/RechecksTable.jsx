@@ -3,6 +3,7 @@ import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
 import { RecheckStatusChip } from '../common/Chips'
 import { ReasonChips } from './RecheckReasons'
+import { CcUpdatedChip } from './CcTicketAlert'
 import { MUTED_TEXT } from '../../styles/tableSx'
 import { formatDateTime } from '../../utils/formatters'
 import { paths } from '../../utils/routePaths'
@@ -57,7 +58,15 @@ function RechecksTable({ rechecks, onClose }) {
       ),
     },
     { label: 'BDA', render: (recheck) => recheck.bdaEmail },
-    { label: 'Status', render: (recheck) => <RecheckStatusChip recheck={recheck} /> },
+    {
+      label: 'Status',
+      render: (recheck) => (
+        <Stack alignItems="flex-start" gap={0.5}>
+          <RecheckStatusChip recheck={recheck} />
+          <CcUpdatedChip recheck={recheck} />
+        </Stack>
+      ),
+    },
     {
       label: 'Closed',
       render: (recheck) =>

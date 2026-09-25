@@ -28,6 +28,7 @@ const TYPE_LABELS = {
   recheckRaised: 'Recheck raised',
   recheckClosed: 'Recheck closed',
   ccUpdated: 'CC updated',
+  ccTicketOpen: 'Close ticket',
 }
 
 // The alert section: rechecks raised on your leads, rechecks closed, leads assigned to you, CCs
@@ -106,6 +107,7 @@ function Alerts() {
                       <Stack direction="row" gap={1} alignItems="center">
                         <Chip
                           size="small"
+                          color={notification.type === 'ccTicketOpen' ? 'error' : 'default'}
                           label={TYPE_LABELS[notification.type] ?? notification.type}
                         />
                         <Box component="span" sx={{ fontWeight: notification.read ? 400 : 700 }}>

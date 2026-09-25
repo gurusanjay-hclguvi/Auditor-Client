@@ -41,6 +41,7 @@ const presetOptions = DATE_PRESETS.map((preset) => [preset.value, preset.label])
 const TICKET_SHORTCUTS = [
   { label: 'Raised, not closed', filters: { view: 'raisedNotClosed' } },
   { label: 'Closed · audit pending', filters: { view: 'closedAuditPending' } },
+  { label: 'CC updated · not closed', filters: { view: 'ccUpdatedNotClosed' } },
   { label: 'Raised this month', filters: { raisedIn: 'thisMonth' } },
   { label: 'Closed this month', filters: { closedIn: 'thisMonth' } },
   {
@@ -59,6 +60,7 @@ function ticketFilterFields({ auditors, bdas }) {
       options: [
         ['raisedNotClosed', 'Raised, not closed'],
         ['closedAuditPending', 'Closed · audit pending'],
+        ['ccUpdatedNotClosed', 'CC updated · not closed'],
         ['closed', 'Closed'],
       ],
       single: true,
