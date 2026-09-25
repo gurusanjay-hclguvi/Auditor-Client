@@ -89,7 +89,7 @@ function LeadsTable({ leads, onTakeUp }) {
         ]
       : []),
   ]
-  return <DataTable columns={columns} rows={leads} />
+  return <DataTable columns={columns} rows={leads} storageKey="leads" />
 }
 
 export default LeadsTable

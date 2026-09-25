@@ -103,7 +103,7 @@ function Members() {
         empty={data?.length === 0}
         emptyMessage="No members yet."
       >
-        {data && <DataTable columns={columns} rows={data} />}
+        {data && <DataTable columns={columns} rows={data} storageKey="members" />}
       </PageState>
       <Dialog open={Boolean(form)} onClose={() => setForm(null)} fullWidth maxWidth="xs">
         {form && (

@@ -1,7 +1,8 @@
 import { Button, Link, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
-import { CategoryChip, RecheckStatusChip } from '../common/Chips'
+import { RecheckStatusChip } from '../common/Chips'
+import { ReasonChips } from './RecheckReasons'
 import { MUTED_TEXT } from '../../styles/tableSx'
 import { formatDateTime } from '../../utils/formatters'
 import { paths } from '../../utils/routePaths'
@@ -35,7 +36,7 @@ function RechecksTable({ rechecks, onClose }) {
         </Link>
       ),
     },
-    { label: 'Category', render: (recheck) => <CategoryChip category={recheck.category} /> },
+    { label: 'Reasons', render: (recheck) => <ReasonChips recheck={recheck} /> },
     {
       label: 'Comments',
       render: (recheck) => (
@@ -95,7 +96,7 @@ function RechecksTable({ rechecks, onClose }) {
       ),
     },
   ]
-  return <DataTable columns={columns} rows={rechecks} />
+  return <DataTable columns={columns} rows={rechecks} storageKey="rechecks" />
 }
 
 export default RechecksTable

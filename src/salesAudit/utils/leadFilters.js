@@ -30,6 +30,3 @@ export const FILTER_KEYS = [
   'recheckClosedIn',
   'awaitingReaudit',
 ]
-
-export const shortcutMatches = (filters, shortcut) =>
-  FILTER_KEYS.every((key) => (filters[key] ?? '') === (shortcut.filters[key] ?? ''))

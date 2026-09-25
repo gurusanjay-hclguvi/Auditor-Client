@@ -4,12 +4,8 @@ import { Link as RouterLink, useParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import { SectionCard } from '../components/common/SectionCard'
-import {
-  AuditStatusChip,
-  CategoryChip,
-  CcStatusChip,
-  RecheckStatusChip,
-} from '../components/common/Chips'
+import { AuditStatusChip, CcStatusChip, RecheckStatusChip } from '../components/common/Chips'
+import { ReasonList } from '../components/rechecks/RecheckReasons'
 import {
   AdmissionSection,
   CourseSection,
@@ -166,12 +162,11 @@ function LeadPage({ data, reload }) {
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {recheck.recheckNo}
                       </Typography>
-                      <CategoryChip category={recheck.category} />
                       <RecheckStatusChip recheck={recheck} />
                     </Stack>
-                    <Typography variant="body2" sx={{ mt: 0.5 }}>
-                      {recheck.comments}
-                    </Typography>
+                    <Box sx={{ mt: 1 }}>
+                      <ReasonList recheck={recheck} />
+                    </Box>
                     <Typography variant="caption" sx={{ color: MUTED_TEXT, display: 'block' }}>
                       Raised {formatDateTime(recheck.raisedAt)} by{' '}
                       {recheck.raisedBy?.name || recheck.raisedBy?.email}

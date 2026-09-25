@@ -7,10 +7,9 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
-  Typography,
 } from '@mui/material'
 import { closeRecheck } from '../../apiCalls/salesAuditApi'
-import { categoryLabel } from '../../utils/labels'
+import { ReasonList } from '../rechecks/RecheckReasons'
 import { useAction } from '../../utils/useAction'
 
 // Closes a recheck ticket (BDA, BDM or auditor). Who closed it is recorded, and the lead's
@@ -41,9 +40,7 @@ function CloseRecheckDialog({ recheck, onClose, onClosed }) {
             Close {recheck.recheckNo} · {recheck.leadName}
           </DialogTitle>
           <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              {categoryLabel(recheck.category)}: {recheck.comments}
-            </Typography>
+            <ReasonList recheck={recheck} color="text.secondary" />
             <TextField
               label="What was fixed"
               value={note}

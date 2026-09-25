@@ -24,7 +24,10 @@ function describe(event) {
     case 'takenUp':
       return `From ${data.from || 'no one'} to ${data.auditorEmail}`
     case 'recheckRaised':
-      return `${data.recheckNo} · ${categoryLabel(data.category)}: ${data.comments ?? ''}`
+      // With several reasons, comments already names each one's category.
+      return data.reasons?.length > 1
+        ? `${data.recheckNo} · ${data.comments}`
+        : `${data.recheckNo} · ${categoryLabel(data.category)}: ${data.comments ?? ''}`
     case 'recheckClosed':
       return `${data.recheckNo} · ${data.note ?? ''}`
     case 'auditCompleted':

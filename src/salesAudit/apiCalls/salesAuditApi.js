@@ -65,8 +65,9 @@ export const sendReminder = (token, leadId) => post(token, `${leadPath(leadId)}/
 // Rechecks (tickets). Filters: scope=mine|all, status, view=raisedNotClosed|closedAuditPending|closed,
 // category, auditorEmail, bdaEmail, leadId, raisedIn / closedIn presets.
 export const getRechecks = (token, filters) => get(token, '/rechecks', filters)
-export const raiseRecheck = (token, { leadId, category, comments }) =>
-  post(token, '/rechecks', { leadId, category, comments })
+// reasons: [{category, comments}], one per category.
+export const raiseRecheck = (token, { leadId, reasons }) =>
+  post(token, '/rechecks', { leadId, reasons })
 export const closeRecheck = (token, recheckId, note) =>
   post(token, `/rechecks/${encodeURIComponent(recheckId)}/close`, { note })
 // Leads by CC status (updated in Zoho from Superleap, or pending).

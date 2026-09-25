@@ -1,13 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   Button,
   Link,
-  MenuItem,
   Snackbar,
   Stack,
   Tab,
   Tabs,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material'
@@ -15,44 +13,67 @@ import { Link as RouterLink, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import DataTable from '../components/common/DataTable'
+import FilterBar from '../components/common/FilterBar'
 import { AuditStatusChip, CcStatusChip } from '../components/common/Chips'
 import RechecksTable from '../components/rechecks/RechecksTable'
 import CloseRecheckDialog from '../components/dialogs/CloseRecheckDialog'
-import { getCcStatus, getRechecks } from '../apiCalls/salesAuditApi'
+import { getCcStatus, getMembers, getRechecks } from '../apiCalls/salesAuditApi'
 import { DATE_PRESETS, RECHECK_CATEGORIES } from '../utils/labels'
 import { formatDateTime } from '../utils/formatters'
 import { paths } from '../utils/routePaths'
 import { isAuditRole, useCurrentUser } from '../utils/roles'
 import { keyedFetcher, useApi } from '../utils/useApi'
 
-const VIEWS = [
-  { value: '', label: 'All' },
-  { value: 'raisedNotClosed', label: 'Raised, not closed' },
-  { value: 'closedAuditPending', label: 'Closed · audit pending' },
-  { value: 'closed', label: 'Closed' },
-]
 const rechecksFetcher = keyedFetcher((filters) => (token) => getRechecks(token, filters))
 const ccStatusFetcher = keyedFetcher((filters) => (token) => getCcStatus(token, filters))
-const TICKET_KEYS = ['view', 'category', 'raisedIn', 'closedIn', 'bdaEmail', 'scope']
+// The ticket filters in the URL; scope (My leads / All) sits apart from them.
+const TICKET_KEYS = [
+  'search',
+  'view',
+  'category',
+  'raisedIn',
+  'closedIn',
+  'auditorEmail',
+  'bdaEmail',
+]
+const presetOptions = DATE_PRESETS.map((preset) => [preset.value, preset.label])
 
-function Select({ label, value, onChange, options, width = 170 }) {
-  return (
-    <TextField
-      select
-      size="small"
-      label={label}
-      value={value ?? ''}
-      onChange={(event) => onChange(event.target.value)}
-      sx={{ minWidth: width }}
-    >
-      <MenuItem value="">Any</MenuItem>
-      {options.map(([optionValue, optionLabel]) => (
-        <MenuItem key={optionValue} value={optionValue}>
-          {optionLabel}
-        </MenuItem>
-      ))}
-    </TextField>
-  )
+const TICKET_SHORTCUTS = [
+  { label: 'Raised, not closed', filters: { view: 'raisedNotClosed' } },
+  { label: 'Closed · audit pending', filters: { view: 'closedAuditPending' } },
+  { label: 'Raised this month', filters: { raisedIn: 'thisMonth' } },
+  { label: 'Closed this month', filters: { closedIn: 'thisMonth' } },
+  {
+    label: 'Raised & closed last month',
+    filters: { raisedIn: 'lastMonth', closedIn: 'lastMonth' },
+  },
+]
+
+// The drawer's blocks; values are comma lists ("any of") except the `single` ones. Auditor and
+// BDA only show for the roles that can pick them.
+function ticketFilterFields({ auditors, bdas }) {
+  return [
+    {
+      key: 'view',
+      label: 'Status',
+      options: [
+        ['raisedNotClosed', 'Raised, not closed'],
+        ['closedAuditPending', 'Closed · audit pending'],
+        ['closed', 'Closed'],
+      ],
+      single: true,
+    },
+    { key: 'category', label: 'Reason', options: Object.entries(RECHECK_CATEGORIES) },
+    // One time window each.
+    { key: 'raisedIn', label: 'Raised', options: presetOptions, single: true },
+    { key: 'closedIn', label: 'Closed', options: presetOptions, single: true },
+    auditors && {
+      key: 'auditorEmail',
+      label: 'Auditor',
+      options: auditors.map((auditor) => [auditor.email, auditor.name]),
+    },
+    bdas && { key: 'bdaEmail', label: 'BDA', options: bdas },
+  ].filter(Boolean)
 }
 
 // Recheck tickets: auditors see those on their leads (or all), a BDA those on their leads, a BDM
@@ -97,74 +118,54 @@ function Tickets({ update }) {
   const [closing, setClosing] = useState(null)
   const [notice, setNotice] = useState(null)
   const auditRole = isAuditRole(user.role)
-  const defaultScope = user.role === 'auditor' ? 'mine' : 'all'
-  const filters = Object.fromEntries(TICKET_KEYS.map((key) => [key, params.get(key) ?? '']))
-  const scope = filters.scope || defaultScope
+  const scope = params.get('scope') || (user.role === 'auditor' ? 'mine' : 'all')
+  const filters = Object.fromEntries(
+    TICKET_KEYS.filter((key) => params.get(key)).map((key) => [key, params.get(key)]),
+  )
   const query = JSON.stringify({ ...filters, scope })
   const { data, loading, error, reload } = useApi(rechecksFetcher(query))
-  const presets = DATE_PRESETS.map((preset) => [preset.value, preset.label])
+  // Auditors pick from every auditor and BDA; a BDM from their own BDAs.
+  const { data: members } = useApi(
+    useCallback(
+      (token) =>
+        auditRole
+          ? Promise.all([getMembers(token, 'auditor'), getMembers(token, 'bda')])
+          : Promise.resolve(null),
+      [auditRole],
+    ),
+  )
+  const fields = ticketFilterFields({
+    auditors: auditRole ? (members?.[0] ?? []) : null,
+    bdas: auditRole
+      ? (members?.[1] ?? []).map((bda) => [bda.email, bda.name])
+      : user.role === 'bdm'
+        ? user.teamEmails.map((email) => [email, email])
+        : null,
+  })
 
   return (
     <>
-      <Stack direction="row" flexWrap="wrap" gap={1.5} alignItems="center" sx={{ mb: 2 }}>
+      {auditRole && (
         <ToggleButtonGroup
           size="small"
           exclusive
-          value={filters.view}
-          onChange={(_, value) => value !== null && update({ view: value })}
+          value={scope}
+          onChange={(_, value) => value && update({ scope: value })}
+          sx={{ mb: 2 }}
         >
-          {VIEWS.map((view) => (
-            <ToggleButton key={view.value} value={view.value}>
-              {view.label}
-            </ToggleButton>
-          ))}
+          <ToggleButton value="mine">My leads</ToggleButton>
+          <ToggleButton value="all">All</ToggleButton>
         </ToggleButtonGroup>
-        {auditRole && (
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={scope}
-            onChange={(_, value) => value && update({ scope: value })}
-          >
-            <ToggleButton value="mine">My leads</ToggleButton>
-            <ToggleButton value="all">All</ToggleButton>
-          </ToggleButtonGroup>
-        )}
-        <Select
-          label="Category"
-          value={filters.category}
-          onChange={(value) => update({ category: value })}
-          options={Object.entries(RECHECK_CATEGORIES)}
-        />
-        <Select
-          label="Raised"
-          value={filters.raisedIn}
-          onChange={(value) => update({ raisedIn: value })}
-          options={presets}
-          width={140}
-        />
-        <Select
-          label="Closed"
-          value={filters.closedIn}
-          onChange={(value) => update({ closedIn: value })}
-          options={presets}
-          width={140}
-        />
-        {user.role === 'bdm' && (
-          <Select
-            label="BDA"
-            value={filters.bdaEmail}
-            onChange={(value) => update({ bdaEmail: value })}
-            options={user.teamEmails.map((email) => [email, email])}
-            width={220}
-          />
-        )}
-        {TICKET_KEYS.some((key) => key !== 'scope' && filters[key]) && (
-          <Button onClick={() => update(Object.fromEntries(TICKET_KEYS.map((key) => [key, ''])))}>
-            Clear filters
-          </Button>
-        )}
-      </Stack>
+      )}
+      <FilterBar
+        filters={filters}
+        onChange={(next) =>
+          update({ ...Object.fromEntries(TICKET_KEYS.map((key) => [key, ''])), ...next })
+        }
+        fields={fields}
+        shortcuts={TICKET_SHORTCUTS}
+        searchLabel="Search recheck ID, learner, Zen ID, comments"
+      />
       <PageState
         loading={loading}
         error={error}
@@ -258,7 +259,7 @@ function CcStatusList({ update }) {
         empty={data?.items.length === 0}
         emptyMessage="No leads waiting on a CC here."
       >
-        {data && <DataTable columns={columns} rows={data.items} />}
+        {data && <DataTable columns={columns} rows={data.items} storageKey="ccStatus" />}
       </PageState>
     </>
   )

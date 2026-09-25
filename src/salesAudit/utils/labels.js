@@ -59,3 +59,10 @@ export const DATE_PRESETS = [
 
 export const categoryLabel = (key) => RECHECK_CATEGORIES[key] ?? key
 export const auditStatusOf = (status) => AUDIT_STATUS[status] ?? { label: status, color: 'default' }
+
+// A recheck's reasons ([{category, comments}]). Rechecks from Zoho or from before there could be
+// several reasons only carry category + comments: that is their one reason.
+export const reasonsOf = (recheck) =>
+  recheck.reasons?.length
+    ? recheck.reasons
+    : [{ category: recheck.category, comments: recheck.comments }]
