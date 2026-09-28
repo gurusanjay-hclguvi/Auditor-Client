@@ -9,13 +9,12 @@ import {
   DialogTitle,
   MenuItem,
   Stack,
-  Switch,
   TextField,
 } from '@mui/material'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
 import DataTable from '../components/common/DataTable'
-import { createMember, getMembers, updateMember } from '../apiCalls/salesAuditApi'
+import { createMember, getMembers } from '../apiCalls/salesAuditApi'
 import { REGIONS } from '../utils/labels'
 import { ROLE_LABELS, useCanWrite } from '../utils/roles'
 import { useAction } from '../utils/useAction'
@@ -31,18 +30,12 @@ const EMPTY = {
 }
 const loadMembers = (token) => getMembers(token)
 
-// The roster (auditor TL): who is an auditor for which region, who reports to whom, and who is
-// available for automatic lead assignment.
+// The roster (auditor TL): who is an auditor for which region, and who reports to whom.
 function Members() {
   const canWrite = useCanWrite()
   const { data, loading, error, reload } = useApi(loadMembers)
   const [form, setForm] = useState(null)
   const create = useAction(createMember)
-  const update = useAction(updateMember)
-
-  async function toggle(member) {
-    if (await update.run(member.id, { available: !member.available })) reload()
-  }
 
   async function save() {
     if (await create.run(form)) {
@@ -63,26 +56,13 @@ function Members() {
     },
     { label: 'Region', render: (member) => member.region || '—' },
     { label: 'Reports to', render: (member) => member.managerEmail || '—' },
-    {
-      label: 'Available',
-      render: (member) =>
-        member.role === 'auditor' ? (
-          <Switch
-            checked={member.available}
-            disabled={!canWrite || update.busy}
-            onChange={() => toggle(member)}
-          />
-        ) : (
-          '—'
-        ),
-    },
   ]
 
   return (
     <>
       <PageHeader
         title="Members"
-        subtitle="Auditors get new leads of their region automatically while they are available."
+        subtitle="Audit coordinators get new leads of their region automatically."
         action={
           canWrite && (
             <Button variant="contained" onClick={() => setForm(EMPTY)}>
@@ -91,11 +71,6 @@ function Members() {
           )
         }
       />
-      {update.error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {update.error}
-        </Alert>
-      )}
       <PageState
         loading={loading}
         error={error}
@@ -160,7 +135,7 @@ function Members() {
                 {(form.role === 'auditor' || form.role === 'bda') && (
                   <TextField
                     select
-                    label={form.role === 'auditor' ? 'Auditor TL' : 'BDM'}
+                    label={form.role === 'auditor' ? 'Audit Coordinator TL' : 'BDM'}
                     value={form.managerEmail}
                     onChange={(event) => setForm({ ...form, managerEmail: event.target.value })}
                   >

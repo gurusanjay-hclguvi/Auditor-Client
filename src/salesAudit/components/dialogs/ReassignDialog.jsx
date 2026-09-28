@@ -15,7 +15,7 @@ import { useApi } from '../../utils/useApi'
 
 const loadAuditors = (token) => getMembers(token, 'auditor')
 
-// Moves a lead to another auditor (e.g. its auditor is away).
+// Moves a lead to another auditor.
 function ReassignDialog({ open, lead, onClose, onReassigned }) {
   const [auditorEmail, setAuditorEmail] = useState('')
   const { data: auditors } = useApi(
@@ -46,7 +46,7 @@ function ReassignDialog({ open, lead, onClose, onReassigned }) {
       >
         <TextField
           select
-          label="Auditor"
+          label="Audit Coordinator"
           value={auditorEmail}
           onChange={(event) => setAuditorEmail(event.target.value)}
           helperText={current ? `Now with ${current}` : 'Not assigned yet'}
@@ -56,7 +56,6 @@ function ReassignDialog({ open, lead, onClose, onReassigned }) {
             .map((auditor) => (
               <MenuItem key={auditor.id} value={auditor.email}>
                 {auditor.name} · {auditor.region}
-                {auditor.available ? '' : ' (away)'}
               </MenuItem>
             ))}
         </TextField>

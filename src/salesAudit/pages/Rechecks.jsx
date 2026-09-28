@@ -71,7 +71,7 @@ function ticketFilterFields({ auditors, bdas }) {
     { key: 'closedIn', label: 'Closed', options: presetOptions, single: true },
     auditors && {
       key: 'auditorEmail',
-      label: 'Auditor',
+      label: 'Audit Coordinator',
       options: auditors.map((auditor) => [auditor.email, auditor.name]),
     },
     bdas && { key: 'bdaEmail', label: 'BDA', options: bdas },
@@ -181,7 +181,7 @@ function Tickets({ update }) {
         recheck={closing}
         onClose={() => setClosing(null)}
         onClosed={(recheck) => {
-          setNotice(`${recheck.recheckNo} closed; the auditor was told to audit again`)
+          setNotice(`${recheck.recheckNo} closed; the audit coordinator was told to audit again`)
           reload()
         }}
       />
@@ -211,7 +211,7 @@ function CcStatusList({ update }) {
         </Link>
       ),
     },
-    { label: 'Auditor', render: (lead) => lead.assignment?.auditorEmail || '—' },
+    { label: 'Audit Coordinator', render: (lead) => lead.assignment?.auditorEmail || '—' },
     { label: 'BDA', render: (lead) => lead.bdaEmail || '—' },
     { label: 'CC', render: (lead) => <CcStatusChip status={lead.cc.status} /> },
     { label: 'CC updated', render: (lead) => formatDateTime(lead.cc.updatedAt) },

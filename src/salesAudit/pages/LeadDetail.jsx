@@ -116,7 +116,7 @@ function LeadPage({ data, reload }) {
           <Chip
             size="small"
             variant="outlined"
-            label={`Auditor: ${lead.assignment.auditorEmail} (${ASSIGN_MODE_LABELS[lead.assignment.mode] ?? lead.assignment.mode})`}
+            label={`Audit Coordinator: ${lead.assignment.auditorEmail} (${ASSIGN_MODE_LABELS[lead.assignment.mode] ?? lead.assignment.mode})`}
           />
         )}
         {lead.audit.completedAt > 0 && (

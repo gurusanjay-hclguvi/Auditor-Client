@@ -11,6 +11,7 @@ import { CcTicketAlert } from '../components/rechecks/CcTicketAlert'
 import { getBdaDashboard, getRechecks } from '../apiCalls/salesAuditApi'
 import { MUTED_TEXT } from '../styles/tableSx'
 import { DATE_PRESETS, categoryLabel } from '../utils/labels'
+import { leadsLink } from '../utils/leadFilters'
 import { paths } from '../utils/routePaths'
 import { useCurrentUser } from '../utils/roles'
 import { useApi } from '../utils/useApi'
@@ -101,7 +102,7 @@ function BdaDashboard() {
                 label="Audit completed"
                 value={data.totals.auditCompleted}
                 color="success.main"
-                onClick={() => navigate(`${paths.leads}?tab=completed`)}
+                onClick={() => navigate(leadsLink({ tab: 'completed' }))}
               />
               <StatTile
                 label="Rechecks pending"

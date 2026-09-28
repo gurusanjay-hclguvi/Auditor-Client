@@ -13,14 +13,15 @@ export const ROLES = {
 }
 
 export const ROLE_LABELS = {
-  auditorTl: 'Auditor TL',
-  auditor: 'Auditor',
+  auditorTl: 'Audit Coordinator TL',
+  auditor: 'Audit Coordinator',
   bdm: 'BDM',
   bda: 'BDA',
 }
 
 export const AUDIT_TEAM = [ROLES.auditorTl, ROLES.auditor]
 export const TL_ONLY = [ROLES.auditorTl]
+export const AUDITORS_ONLY = [ROLES.auditor]
 export const SALES_TEAM = [ROLES.bdm, ROLES.bda]
 export const ALL_ROLES = Object.values(ROLES)
 

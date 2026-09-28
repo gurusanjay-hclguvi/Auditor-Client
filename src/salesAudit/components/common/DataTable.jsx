@@ -11,41 +11,58 @@ import {
 import ColumnPicker from './ColumnPicker'
 import { bodyCellSx, headCellSx, tableContainerSx } from '../../styles/tableSx'
 
-// Hidden columns are remembered per table (`storageKey`) in this browser; a table without a key
-// forgets them on reload. Storage can be blocked, so every access is guarded.
+// The columns picked in the Columns menu are remembered per table (`storageKey`) in this browser:
+// the ones hidden, and the default-hidden ones shown. A table without a key forgets them on
+// reload. Storage can be blocked, so every access is guarded.
 const storageName = (storageKey) => `salesAuditHiddenColumns:${storageKey}`
+const NO_CHOICE = { hidden: [], shown: [] }
 
-function loadHidden(storageKey) {
-  if (!storageKey) return []
+function loadChoice(storageKey) {
+  if (!storageKey) return NO_CHOICE
   try {
     const saved = JSON.parse(localStorage.getItem(storageName(storageKey)))
-    return Array.isArray(saved) ? saved : []
+    // Saved before columns could be hidden by default: a list of hidden labels.
+    if (Array.isArray(saved)) return { hidden: saved, shown: [] }
+    return {
+      hidden: Array.isArray(saved?.hidden) ? saved.hidden : [],
+      shown: Array.isArray(saved?.shown) ? saved.shown : [],
+    }
   } catch {
-    return []
+    return NO_CHOICE
   }
 }
 
-function saveHidden(storageKey, hidden) {
+function saveChoice(storageKey, choice) {
   if (!storageKey) return
   try {
-    localStorage.setItem(storageName(storageKey), JSON.stringify(hidden))
+    localStorage.setItem(storageName(storageKey), JSON.stringify(choice))
   } catch {
     // Storage blocked: the choice lasts until reload.
   }
 }
 
-// columns: [{ label, render: (row) => node }]; rows must carry a unique `id`. The Columns menu at
-// the top right shows or hides columns; the first column always stays so each row is identifiable.
+// columns: [{ label, render: (row) => node, defaultHidden }]; rows must carry a unique `id`. The
+// Columns menu at the top right shows or hides columns; `defaultHidden` ones start hidden. The
+// first column always stays so each row is identifiable.
 function DataTable({ columns, rows, storageKey }) {
-  const [hidden, setHidden] = useState(() => loadHidden(storageKey))
+  const [choice, setChoice] = useState(() => loadChoice(storageKey))
   const labels = columns.map((column) => column.label)
   const locked = labels.slice(0, 1)
-  const hiddenNow = hidden.filter((label) => labels.includes(label) && !locked.includes(label))
+  const hiddenNow = columns
+    .filter(
+      (column) =>
+        !locked.includes(column.label) &&
+        (choice.hidden.includes(column.label) ||
+          (column.defaultHidden && !choice.shown.includes(column.label))),
+    )
+    .map((column) => column.label)
   const visible = columns.filter((column) => !hiddenNow.includes(column.label))
 
-  function update(next) {
-    setHidden(next)
-    saveHidden(storageKey, next)
+  function update(hidden) {
+    const shown = labels.filter((label) => !hidden.includes(label))
+    const next = { hidden, shown }
+    setChoice(next)
+    saveChoice(storageKey, next)
   }
 
   return (

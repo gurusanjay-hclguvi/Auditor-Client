@@ -3,7 +3,7 @@ import { Alert, Button, Snackbar, Stack, Tab, TablePagination, Tabs } from '@mui
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/common/PageHeader'
 import PageState from '../components/common/PageState'
-import LeadFilters from '../components/leads/LeadFilters'
+import LeadFilterSidebar from '../components/leads/LeadFilterSidebar'
 import LeadsTable from '../components/leads/LeadsTable'
 import {
   assignLeads,
@@ -12,7 +12,14 @@ import {
   importZoho,
   takeUpLead,
 } from '../apiCalls/salesAuditApi'
-import { LEAD_TABS, auditStatusFor, filterKeysOf, tabOf } from '../utils/leadFilters'
+import {
+  LEAD_TABS,
+  auditStatusFor,
+  filterFieldsFor,
+  leadsLink,
+  rulesOf,
+  tabOf,
+} from '../utils/leadFilters'
 import { isAuditRole, useCanWrite, useCurrentUser } from '../utils/roles'
 import { useAction } from '../utils/useAction'
 import { useApi } from '../utils/useApi'
@@ -21,9 +28,10 @@ const PAGE_SIZE = 25
 const loadAuditors = (token) => getMembers(token, 'auditor')
 
 // All Leads (every lead, with every stage from coming in to audit completed) and My Leads (the
-// auditor's own). BDAs and BDMs get their own / their team's leads here. Two tabs split the leads
-// still being audited from the completed ones. The tab and filters live in the URL so a filtered
-// list can be shared.
+// audit coordinator's own). BDAs and BDMs get their own / their team's leads here. Three tabs split
+// the leads waiting for an audit (new, or to audit again after a closed recheck), the ones with a
+// recheck open, and the completed ones. The tab, search and filter rules live in the URL so a
+// filtered list can be shared.
 function Leads({ mine = false }) {
   const user = useCurrentUser()
   const canWrite = useCanWrite()
@@ -32,15 +40,14 @@ function Leads({ mine = false }) {
   const fileInput = useRef(null)
 
   const tab = tabOf(params)
-  const filters = Object.fromEntries(
-    filterKeysOf(tab)
-      .filter((key) => params.get(key))
-      .map((key) => [key, params.get(key)]),
-  )
+  const fields = filterFieldsFor(tab)
+  const rules = rulesOf(params).filter((rule) => fields.some((field) => field.key === rule.field))
+  const search = params.get('search') ?? ''
   const page = Number(params.get('page')) || 1
   const query = JSON.stringify({
-    ...filters,
-    auditStatus: auditStatusFor(tab, filters.auditStatus),
+    search,
+    filters: rules.length ? JSON.stringify(rules) : '',
+    auditStatus: auditStatusFor(tab),
     page,
   })
   const { data, loading, error, reload } = useApi(
@@ -68,20 +75,15 @@ function Leads({ mine = false }) {
   const actionError = takeUp.error || assign.error || importer.error
 
   // New filters start from page 1 of the same tab.
-  function setFilters(next, nextTab = tab) {
-    const search = new URLSearchParams()
-    if (nextTab === 'completed') search.set('tab', nextTab)
-    Object.entries(next).forEach(([key, value]) => value && search.set(key, value))
-    setParams(search)
+  function go(next) {
+    const link = leadsLink({ tab, rules, search, ...next })
+    setParams(new URLSearchParams(link.split('?')[1] ?? ''))
   }
 
-  // Switching tab keeps the filters both tabs take (search, region, BDA…) and drops the others.
+  // Switching tab keeps the search and rules, except the audit status only Pending Audits takes.
   function setTab(nextTab) {
-    const keys = filterKeysOf(nextTab)
-    setFilters(
-      Object.fromEntries(Object.entries(filters).filter(([key]) => keys.includes(key))),
-      nextTab,
-    )
+    const keys = filterFieldsFor(nextTab).map((field) => field.key)
+    go({ tab: nextTab, rules: rules.filter((rule) => keys.includes(rule.field)) })
   }
 
   function setPage(next) {
@@ -101,7 +103,7 @@ function Leads({ mine = false }) {
     const result = await assign.run()
     if (result) {
       setNotice(
-        `${result.assigned} lead(s) assigned${result.unassigned ? `, ${result.unassigned} with no available auditor in their region` : ''}`,
+        `${result.assigned} lead(s) assigned${result.unassigned ? `, ${result.unassigned} with no audit coordinator in their region` : ''}`,
       )
       reload()
     }
@@ -172,12 +174,16 @@ function Leads({ mine = false }) {
           <Tab key={item.value} value={item.value} label={item.label} />
         ))}
       </Tabs>
-      <LeadFilters
-        tab={tab}
-        filters={filters}
-        onChange={setFilters}
-        auditors={auditRole && !mine ? (auditors ?? []) : null}
-        bdas={user.role === 'bdm' ? user.teamEmails : null}
+      <LeadFilterSidebar
+        fields={fields}
+        rules={rules}
+        onRulesChange={(next) => go({ rules: next })}
+        search={search}
+        onSearchChange={(next) => go({ search: next })}
+        suggestions={{
+          auditors: (auditors ?? []).map((auditor) => auditor.email),
+          bdas: user.role === 'bdm' ? (user.teamEmails ?? []) : [],
+        }}
       />
       <PageState
         loading={loading}
@@ -185,11 +191,13 @@ function Leads({ mine = false }) {
         onRetry={reload}
         empty={data?.items.length === 0}
         emptyMessage={
-          Object.keys(filters).length
+          rules.length || search
             ? 'No leads match these filters.'
             : tab === 'completed'
               ? 'No completed audits yet.'
-              : 'No leads waiting for an audit.'
+              : tab === 'rechecks'
+                ? 'No leads with an open recheck.'
+                : 'No leads waiting for an audit.'
         }
       >
         {data && (

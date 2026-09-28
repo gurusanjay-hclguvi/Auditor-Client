@@ -1,13 +1,80 @@
 import { Button, Link, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import DataTable from '../common/DataTable'
-import { AuditStatusChip, CcStatusChip, PaymentReadyChip } from '../common/Chips'
+import { AuditStatusChip, CcStatusChip, PaymentReadyChip, RecheckStatusChip } from '../common/Chips'
 import { MUTED_TEXT } from '../../styles/tableSx'
-import { formatCurrency, formatProduct, formatZohoDate } from '../../utils/formatters'
+import {
+  formatCurrency,
+  formatDateTime,
+  formatProduct,
+  formatZohoDate,
+  orEmpty,
+} from '../../utils/formatters'
+import { categoryLabel, reasonsOf } from '../../utils/labels'
 import { paths } from '../../utils/routePaths'
 import { isAuditRole, useCanWrite, useCurrentUser } from '../../utils/roles'
 
-// Leads with their audit state. Auditors get Audit (their own leads) and Take up (someone else's).
+// A column from the lead's most recent recheck ("—" when it has none).
+const fromRecheck = (read) => (lead) => (lead.latestRecheck ? read(lead.latestRecheck) : '—')
+
+// Columns shown only when picked in the Columns menu. Recheck columns show the latest recheck.
+const MORE_COLUMNS = [
+  { label: 'SR ID', render: fromRecheck((recheck) => recheck.recheckNo) },
+  { label: 'Audit Team Comments', render: fromRecheck((recheck) => orEmpty(recheck.comments)) },
+  { label: 'Recheck Category', render: fromRecheck((recheck) => categoryLabel(recheck.category)) },
+  {
+    label: 'Recheck Reason',
+    render: fromRecheck((recheck) =>
+      reasonsOf(recheck)
+        .map((reason) => categoryLabel(reason.category))
+        .join(', '),
+    ),
+  },
+  {
+    label: 'Recheck Date Time',
+    render: fromRecheck((recheck) => formatDateTime(recheck.raisedAt)),
+  },
+  {
+    label: 'Recheck Request From',
+    render: fromRecheck((recheck) => orEmpty(recheck.raisedBy.email)),
+  },
+  {
+    label: 'Ticket Status',
+    render: fromRecheck((recheck) => <RecheckStatusChip recheck={recheck} />),
+  },
+  { label: 'CC Recheck Attempt', render: fromRecheck((recheck) => recheck.attempt || '—') },
+  {
+    label: 'Resubmit Date Time',
+    render: fromRecheck((recheck) => formatDateTime(recheck.closed?.at)),
+  },
+  {
+    label: 'New Confirmation Call Link',
+    render: (lead) =>
+      lead.cc.link ? (
+        <Link href={lead.cc.link} target="_blank" rel="noreferrer" underline="hover">
+          Open
+        </Link>
+      ) : (
+        '—'
+      ),
+  },
+  { label: 'Assigned Batch', render: (lead) => orEmpty(lead.course.batch.name) },
+  { label: 'Sales From', render: (lead) => orEmpty(lead.salesFrom) },
+  {
+    label: 'Awaiting Main Bootcamp Date-Time',
+    render: (lead) => formatDateTime(lead.course.awaitingAt),
+  },
+  { label: 'Onboarding Coordinator', render: (lead) => orEmpty(lead.onboardCoordinator) },
+  { label: 'Onboarded Date Time', render: (lead) => formatDateTime(lead.course.onboardingAt) },
+  {
+    label: 'Audit Coordinator Assigned Date-Time',
+    render: (lead) => formatDateTime(lead.assignment?.assignedAt),
+  },
+  { label: 'Audit Completed Date-Time', render: (lead) => formatDateTime(lead.audit.completedAt) },
+].map((column) => ({ ...column, defaultHidden: true }))
+
+// Leads with their audit state. Audit coordinators get Audit (their own leads) and Take up
+// (someone else's). Each row is a lead of GET /leads, with its latest recheck.
 function LeadsTable({ leads, onTakeUp }) {
   const user = useCurrentUser()
   const canWrite = useCanWrite()
@@ -16,24 +83,20 @@ function LeadsTable({ leads, onTakeUp }) {
     {
       label: 'Learner',
       render: (lead) => (
-        <Stack>
-          <Link
-            component={RouterLink}
-            to={paths.lead(lead.id)}
-            underline="hover"
-            sx={{ fontWeight: 600 }}
-          >
-            {lead.personal.name || lead.personal.email}
-          </Link>
-          <Typography variant="caption" sx={{ color: MUTED_TEXT }}>
-            Zen ID {lead.zenId}
-          </Typography>
-        </Stack>
+        <Link
+          component={RouterLink}
+          to={paths.lead(lead.id)}
+          underline="hover"
+          sx={{ fontWeight: 600 }}
+        >
+          {lead.personal.name || lead.personal.email}
+        </Link>
       ),
     },
+    { label: 'Zen ID', render: (lead) => orEmpty(lead.zenId) },
     { label: 'Course', render: (lead) => formatProduct(lead.course.product) },
     { label: 'Region', render: (lead) => lead.region || '—' },
-    { label: 'Auditor', render: (lead) => lead.assignment?.auditorEmail || '—' },
+    { label: 'Audit Coordinator', render: (lead) => lead.assignment?.auditorEmail || '—' },
     { label: 'BDA', render: (lead) => lead.bdaEmail || '—' },
     {
       label: 'Payment',
@@ -56,6 +119,7 @@ function LeadsTable({ leads, onTakeUp }) {
           : '—',
     },
     { label: 'Enrolled', render: (lead) => formatZohoDate(lead.course.enrolledOn) },
+    ...MORE_COLUMNS,
     ...(auditor
       ? [
           {

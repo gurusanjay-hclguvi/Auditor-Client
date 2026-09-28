@@ -1,7 +1,7 @@
 import { createElement, lazy } from 'react'
 import RoleGate from './components/common/RoleGate'
 import { ROUTE_PATTERNS } from './utils/routePaths'
-import { ALL_ROLES, AUDIT_TEAM, SALES_TEAM, TL_ONLY } from './utils/roles'
+import { ALL_ROLES, AUDIT_TEAM, AUDITORS_ONLY, SALES_TEAM, TL_ONLY } from './utils/roles'
 
 const VIEW_PERMISSION = 'salesAudit.view'
 
@@ -22,7 +22,7 @@ const page = (path, load, roles) => ({
 })
 
 const routes = [
-  page(ROUTE_PATTERNS.myLeads, () => import('./pages/MyLeads'), AUDIT_TEAM),
+  page(ROUTE_PATTERNS.myLeads, () => import('./pages/MyLeads'), AUDITORS_ONLY),
   page(ROUTE_PATTERNS.leads, () => import('./pages/Leads'), ALL_ROLES),
   page(ROUTE_PATTERNS.leadAudit, () => import('./pages/LeadAudit'), AUDIT_TEAM),
   page(ROUTE_PATTERNS.ccVerification, () => import('./pages/CcVerification'), AUDIT_TEAM),

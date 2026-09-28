@@ -3,7 +3,7 @@ import rechecksIcon from './assets/rechecks.svg'
 import bdaIcon from './assets/bda.svg'
 import overviewIcon from './assets/overview.svg'
 import { paths } from './utils/routePaths'
-import { ALL_ROLES, AUDIT_TEAM, SALES_TEAM, TL_ONLY } from './utils/roles'
+import { ALL_ROLES, AUDIT_TEAM, AUDITORS_ONLY, SALES_TEAM, TL_ONLY } from './utils/roles'
 
 // `roles` narrows each item to the roles that use it (the shell also checks `key` permission).
 const navItems = [
@@ -26,7 +26,7 @@ const navItems = [
     route: paths.myLeads,
     key: 'salesAudit',
     image: salesAuditIcon,
-    roles: AUDIT_TEAM,
+    roles: AUDITORS_ONLY,
   },
   {
     label: 'All Leads',
